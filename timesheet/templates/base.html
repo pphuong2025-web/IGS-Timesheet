@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Timesheet{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-hover: #79b8ff;
+      --danger: #f85149;
+      --success: #3fb950;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 1rem 1.5rem; }
+    .container.container--wide { max-width: 100%; padding-left: 1rem; padding-right: 1rem; }
+    nav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0.75rem 1.5rem; }
+    nav a { color: var(--accent); text-decoration: none; margin-right: 1.25rem; }
+    nav a:hover { color: var(--accent-hover); }
+    nav .user { color: var(--text-muted); font-size: 0.9rem; margin-right: 1rem; }
+    h1 { font-size: 1.5rem; margin: 0 0 1rem 0; }
+    .btn { display: inline-block; padding: 0.5rem 1rem; background: var(--accent); color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; text-decoration: none; }
+    .btn:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--border); }
+    .btn-secondary:hover { background: #3d4d66; }
+    .btn-danger { background: var(--danger); }
+    .btn-danger:hover { background: #ff6b6b; }
+    .error { color: var(--danger); margin-bottom: 1rem; }
+    .alert { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+    .alert-error { background: rgba(248,81,73,0.15); color: var(--danger); }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 8px; overflow: hidden; }
+    th, td { padding: 0.6rem 0.9rem; text-align: left; border-bottom: 1px solid var(--border); }
+    th { background: rgba(0,0,0,0.2); font-weight: 600; }
+    input, select, textarea { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.5rem; border-radius: 4px; font-size: 0.95rem; }
+    input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    label { display: block; margin-bottom: 0.25rem; color: var(--text-muted); font-size: 0.9rem; }
+    .form-group { margin-bottom: 1rem; }
+    .graveyard { color: #d29922; }
+    /* Full-week timesheet: fit Mon–Sun without horizontal scroll */
+    .timesheet-week-wrap { width: 100%; overflow-x: visible; }
+    .timesheet-week-table { table-layout: fixed; width: 100%; font-size: 0.8rem; }
+    .timesheet-week-table th,
+    .timesheet-week-table td { padding: 0.3rem 0.35rem; }
+    .timesheet-week-table .day-remark { overflow: hidden; text-overflow: ellipsis; max-width: 2.5rem; }
+    .timesheet-week-table input[type="time"] { font-size: 0.75rem; padding: 0.25rem; min-width: 0; }
+    .timesheet-day-rows-table { font-size: 0.9rem; }
+    .timesheet-day-rows-table th, .timesheet-day-rows-table td { padding: 0.4rem 0.5rem; }
+    .timesheet-day-rows-table input[type="time"] { min-width: 5rem; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  {% block nav %}
+  {% if session.get('user_id') %}
+  <nav>
+    <a href="{{ url_for('timesheet') }}">Timesheet</a>
+    {% if can_request_timeoff %}<a href="{{ url_for('request_timeoff') }}">Request time off</a>{% endif %}
+    {% if session.get('is_admin') %}
+    <a href="{{ url_for('admin_employees') }}">Employees</a>
+    <a href="{{ url_for('admin_timeoff') }}">Time off</a>
+    {% endif %}
+    <span class="user">{{ session.get('full_name') }}</span>
+    <a href="{{ url_for('change_name') }}">Change name</a>
+    <a href="{{ url_for('change_password') }}">Change password</a>
+    <a href="{{ url_for('logout') }}">Logout</a>
+  </nav>
+  {% endif %}
+  {% endblock %}
+  <main class="container {% block container_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

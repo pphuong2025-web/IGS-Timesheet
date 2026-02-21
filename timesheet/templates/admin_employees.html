@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Employees – Admin{% endblock %}
+
+{% block content %}
+<h1>Employees</h1>
+<p><a href="{{ url_for('admin_employee_add') }}" class="btn">Add employee</a></p>
+
+<section style="margin-bottom: 2rem;">
+  <h2 style="font-size: 1.2rem; margin-bottom: 0.5rem;">Day</h2>
+  {% set employees = employees_by_shift.day %}
+  {% if employees %}
+  <table>
+    <thead>
+      <tr><th>Full name</th><th>Status</th><th>Admin</th><th>Updated</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for e in employees %}
+      <tr>
+        <td>{{ e.full_name }}</td>
+        <td>{{ 'Contractor' if (e.employment_type or '').lower() == 'contractor' else 'Full time' }}</td>
+        <td>{{ 'Yes' if e.is_admin else 'No' }}</td>
+        <td>{{ e.updated_at[:10] if e.updated_at else '–' }}</td>
+        <td>
+          <a href="{{ url_for('admin_employee_edit', employee_id=e.id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Edit</a>
+          <form method="post" action="{{ url_for('admin_employee_delete', employee_id=e.id) }}" style="display: inline;" onsubmit="return confirm('Delete this employee and their timesheet data?');">
+            <button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--text-muted); font-size: 0.9rem;">No employees in this shift.</p>
+  {% endif %}
+</section>
+
+<section style="margin-bottom: 2rem;">
+  <h2 style="font-size: 1.2rem; margin-bottom: 0.5rem;">Swing</h2>
+  {% set employees = employees_by_shift.swing %}
+  {% if employees %}
+  <table>
+    <thead>
+      <tr><th>Full name</th><th>Status</th><th>Admin</th><th>Updated</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for e in employees %}
+      <tr>
+        <td>{{ e.full_name }}</td>
+        <td>{{ 'Contractor' if (e.employment_type or '').lower() == 'contractor' else 'Full time' }}</td>
+        <td>{{ 'Yes' if e.is_admin else 'No' }}</td>
+        <td>{{ e.updated_at[:10] if e.updated_at else '–' }}</td>
+        <td>
+          <a href="{{ url_for('admin_employee_edit', employee_id=e.id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Edit</a>
+          <form method="post" action="{{ url_for('admin_employee_delete', employee_id=e.id) }}" style="display: inline;" onsubmit="return confirm('Delete this employee and their timesheet data?');">
+            <button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--text-muted); font-size: 0.9rem;">No employees in this shift.</p>
+  {% endif %}
+</section>
+
+<section style="margin-bottom: 2rem;">
+  <h2 style="font-size: 1.2rem; margin-bottom: 0.5rem;">Graveyard</h2>
+  {% set employees = employees_by_shift.graveyard %}
+  {% if employees %}
+  <table>
+    <thead>
+      <tr><th>Full name</th><th>Status</th><th>Admin</th><th>Updated</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for e in employees %}
+      <tr>
+        <td>{{ e.full_name }}</td>
+        <td>{{ 'Contractor' if (e.employment_type or '').lower() == 'contractor' else 'Full time' }}</td>
+        <td>{{ 'Yes' if e.is_admin else 'No' }}</td>
+        <td>{{ e.updated_at[:10] if e.updated_at else '–' }}</td>
+        <td>
+          <a href="{{ url_for('admin_employee_edit', employee_id=e.id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Edit</a>
+          <form method="post" action="{{ url_for('admin_employee_delete', employee_id=e.id) }}" style="display: inline;" onsubmit="return confirm('Delete this employee and their timesheet data?');">
+            <button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--text-muted); font-size: 0.9rem;">No employees in this shift.</p>
+  {% endif %}
+</section>
+
+<section style="margin-bottom: 2rem;">
+  <h2 style="font-size: 1.2rem; margin-bottom: 0.5rem;">Unassigned</h2>
+  {% set employees = employees_by_shift.unassigned %}
+  {% if employees %}
+  <table>
+    <thead>
+      <tr><th>Full name</th><th>Status</th><th>Admin</th><th>Updated</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for e in employees %}
+      <tr>
+        <td>{{ e.full_name }}</td>
+        <td>{{ 'Contractor' if (e.employment_type or '').lower() == 'contractor' else 'Full time' }}</td>
+        <td>{{ 'Yes' if e.is_admin else 'No' }}</td>
+        <td>{{ e.updated_at[:10] if e.updated_at else '–' }}</td>
+        <td>
+          <a href="{{ url_for('admin_employee_edit', employee_id=e.id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Edit</a>
+          <form method="post" action="{{ url_for('admin_employee_delete', employee_id=e.id) }}" style="display: inline;" onsubmit="return confirm('Delete this employee and their timesheet data?');">
+            <button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color: var(--text-muted); font-size: 0.9rem;">No employees in this shift.</p>
+  {% endif %}
+</section>
+{% endblock %}

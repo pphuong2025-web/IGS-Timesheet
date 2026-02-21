@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Time off – Admin{% endblock %}
+
+{% block content %}
+<h1>Time off</h1>
+<p style="color: var(--text-muted); margin-bottom: 1rem;">View time off (Sick leave) by employee for a date range. Data comes from the Notes field on the timesheet.</p>
+<p style="margin-bottom: 1rem;"><a href="{{ url_for('admin_timeoff_calendar') }}" class="btn btn-secondary">Calendar view</a></p>
+
+<h2 style="font-size: 1.15rem; margin-bottom: 0.75rem;">All time off requests from employees</h2>
+{% if all_requests %}
+<table>
+  <thead>
+    <tr>
+      <th>Employee</th>
+      <th>From</th>
+      <th>To</th>
+      <th>Type</th>
+      <th>Hrs/day</th>
+      <th>Submitted</th>
+      <th>Status</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in all_requests %}
+    <tr>
+      <td>{{ r.full_name }}</td>
+      <td>{{ r.from_date }}</td>
+      <td>{{ r.to_date }}</td>
+      <td>{{ r.notes }}</td>
+      <td>{{ "%.1f"|format(r.hours_per_day or 0) }}</td>
+      <td>{{ r.created_at[:10] if r.created_at else '' }}</td>
+      <td>{% if r.status == 'pending' %}Pending{% elif r.status == 'approved' %}Approved{% else %}Disapproved{% endif %}</td>
+      <td style="white-space: nowrap;">
+        {% if r.status == 'pending' %}
+        <form method="post" action="{{ url_for('admin_timeoff_approve', request_id=r.id) }}" style="display: inline;">
+          <button type="submit" class="btn">Approve</button>
+        </form>
+        <form method="post" action="{{ url_for('admin_timeoff_reject', request_id=r.id) }}" style="display: inline;">
+          <button type="submit" class="btn btn-secondary">Disapprove</button>
+        </form>
+        {% else %}
+        —
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; margin-bottom: 1.5rem;">{{ all_requests | length }} request(s) total.</p>
+{% else %}
+<p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">No time off requests from employees yet.</p>
+{% endif %}
+
+<form method="get" action="{{ url_for('admin_timeoff') }}" style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.5rem;">
+  <div class="form-group" style="margin-bottom: 0;">
+    <label for="from">From</label>
+    <input type="date" id="from" name="from" value="{{ date_from_str }}" style="width: 11rem;">
+  </div>
+  <div class="form-group" style="margin-bottom: 0;">
+    <label for="to">To</label>
+    <input type="date" id="to" name="to" value="{{ date_to_str }}" style="width: 11rem;">
+  </div>
+  <div style="padding-top: 1.5rem;">
+    <button type="submit" class="btn">Apply</button>
+  </div>
+  <div style="padding-top: 1.5rem;">
+    <a href="{{ url_for('admin_timeoff_export', from=date_from_str, to=date_to_str) }}" class="btn btn-secondary">Export to Excel</a>
+  </div>
+</form>
+
+{% if totals_by_employee %}
+<h2 style="font-size: 1.15rem; margin-bottom: 0.75rem;">Total time off by employee ({{ date_from_str }} to {{ date_to_str }})</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Employee</th>
+      <th>Total days</th>
+      <th>Total hours</th>
+      <th>Sick leave</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in totals_by_employee %}
+    <tr>
+      <td>{{ row.full_name }}</td>
+      <td>{{ row.total }}</td>
+      <td>{{ "%.1f"|format(row.total_hours) }}</td>
+      <td>{{ row.sick_leave }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; margin-bottom: 1.5rem;">{{ totals_by_employee | length }} employee(s) with time off in this range.</p>
+{% endif %}
+
+{% if entries %}
+<h2 style="font-size: 1.15rem; margin-bottom: 0.75rem;">Time off details</h2>
+<table>
+  <thead>
+    <tr>
+      <th>No.</th>
+      <th>Employee</th>
+      <th>Date</th>
+      <th>Day</th>
+      <th>Type</th>
+      <th>Hours</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ e.full_name }}</td>
+      <td>{{ e.work_date }}</td>
+      <td>{{ e.day_name }}</td>
+      <td>{{ e.notes }}</td>
+      <td>{% if e.regular_hours is not none and e.regular_hours > 0 %}{{ "%.1f"|format(e.regular_hours) }}{% else %}8{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem;">{{ entries | length }} time-off day(s) in this range.</p>
+{% else %}
+<p style="color: var(--text-muted);">No time off recorded in this date range.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit employee' if employee else 'Add employee' }} – Admin{% endblock %}
+
+{% block content %}
+<h1>{{ 'Edit employee' if employee else 'Add employee' }}</h1>
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+<form method="post" action="{{ url_for('admin_employee_edit', employee_id=employee.id) if employee else url_for('admin_employee_add') }}" style="max-width: 400px;">
+  <div class="form-group">
+    <label for="full_name">Full name</label>
+    <input type="text" id="full_name" name="full_name" value="{{ employee.full_name if employee else '' }}" required style="width: 100%;">
+  </div>
+  <div class="form-group">
+    <label for="password">Password {{ '(leave blank to keep current)' if employee else '' }}</label>
+    <input type="password" id="password" name="password" {{ '' if employee else 'required' }} style="width: 100%;" placeholder="{{ '••••••••' if employee else '' }}">
+  </div>
+  <div class="form-group">
+    <label for="shift">Shift</label>
+    <select id="shift" name="shift" style="width: 100%;">
+      <option value="">— Unassigned —</option>
+      <option value="day" {{ 'selected' if employee and (employee.shift or '').lower() == 'day' else '' }}>Day</option>
+      <option value="swing" {{ 'selected' if employee and (employee.shift or '').lower() == 'swing' else '' }}>Swing</option>
+      <option value="graveyard" {{ 'selected' if employee and (employee.shift or '').lower() == 'graveyard' else '' }}>Graveyard</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label for="employment_type">Status</label>
+    <select id="employment_type" name="employment_type" style="width: 100%;">
+      <option value="full_time" {{ 'selected' if not employee or (employee.employment_type or 'full_time').lower() == 'full_time' else '' }}>Full time</option>
+      <option value="contractor" {{ 'selected' if employee and (employee.employment_type or '').lower() == 'contractor' else '' }}>Contractor</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label><input type="checkbox" name="is_admin" value="1" {{ 'checked' if employee and employee.is_admin else '' }}> Administrator</label>
+  </div>
+  <button type="submit" class="btn">{{ 'Update' if employee else 'Create' }}</button>
+  <a href="{{ url_for('admin_employees') }}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Change full name – Timesheet{% endblock %}
+
+{% block content %}
+<h1>Change full name</h1>
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+<form method="post" action="{{ url_for('change_name') }}" style="max-width: 360px;">
+  <div class="form-group">
+    <label for="full_name">Full name</label>
+    <input type="text" id="full_name" name="full_name" value="{{ full_name or '' }}" required autofocus style="width: 100%;">
+  </div>
+  <button type="submit" class="btn">Update name</button>
+  <a href="{{ url_for('timesheet') }}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

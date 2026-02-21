@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Login – Timesheet{% endblock %}
+{% block nav %}{% endblock %}
+
+{% block content %}
+<div style="max-width: 360px; margin: 4rem auto;">
+  <h1 style="text-align: center;">Timesheet</h1>
+  {% if error %}
+  <div class="alert alert-error">{{ error }}</div>
+  {% endif %}
+  <form method="post" action="{{ url_for('login') }}">
+    <div class="form-group">
+      <label for="full_name">Full name</label>
+      <input type="text" id="full_name" name="full_name" required autofocus style="width: 100%;" placeholder="Enter your full employee name">
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required style="width: 100%;">
+    </div>
+    <button type="submit" class="btn" style="width: 100%;">Log in</button>
+  </form>
+  <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem;">Administrators: use the master password with any employee's full name to sign in as that employee.</p>
+</div>
+{% endblock %}

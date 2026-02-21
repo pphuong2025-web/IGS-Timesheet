@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L10 Testing Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --bg-elevated: #ffffff;
+      --card: #ffffff;
+      --card-hover: #fafbfc;
+      --text: #1a1d21;
+      --text-secondary: #5c6370;
+      --muted: #8b92a0;
+      --pass: #16a34a;
+      --fail: #dc2626;
+      --accent: #2563eb;
+      --accent-dim: rgba(37, 99, 235, 0.12);
+      --border: #e5e7eb;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06);
+      --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
+      --max-width: 1400px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    .page {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 2rem;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    .header-meta {
+      font-size: 0.8125rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem 1.25rem;
+      align-items: flex-end;
+      padding: 1rem 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 1rem;
+      box-shadow: var(--shadow-card);
+    }
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .filter-group label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+    }
+    .filter-value {
+      font-size: 0.875rem;
+      color: var(--text);
+      padding: 0.4rem 0;
+    }
+    .filter-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+      font-family: inherit;
+      min-width: 120px;
+    }
+    .filter-input-narrow { min-width: 70px; width: 70px; }
+    .toolbar select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.5rem 2rem 0.5rem 0.75rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+      font-family: inherit;
+      min-width: 160px;
+    }
+    .toolbar select:focus, .filter-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim);
+    }
+    .toolbar-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end; margin-left: auto; }
+    .toolbar .btn-apply {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .toolbar .btn-apply:hover { filter: brightness(1.1); }
+    .btn-secondary {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-secondary:hover { background: var(--card-hover); }
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 900px) {
+      .kpi-row { grid-template-columns: repeat(4, 1fr); }
+    }
+    @media (max-width: 500px) {
+      .kpi-row { grid-template-columns: repeat(2, 1fr); }
+    }
+    .kpi-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+      box-shadow: var(--shadow);
+    }
+    .kpi-card.kpi-pass .kpi-value { color: var(--pass); }
+    .kpi-card.kpi-fail .kpi-value { color: var(--fail); }
+    .kpi-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    .kpi-value { font-size: 1.25rem; font-weight: 700; }
+    .chart-wide { grid-column: 1 / -1; }
+    .chart-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    @media (max-width: 700px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      box-shadow: var(--shadow-card);
+    }
+    .panel-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin: 0 0 0.75rem 0;
+    }
+    .outcome-mix { font-size: 0.875rem; color: var(--text); }
+    .outcome-mix div { margin-bottom: 0.25rem; }
+    .top-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      font-size: 0.875rem;
+    }
+    .top-list li { display: flex; justify-content: space-between; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+    .top-list li:last-child { border-bottom: none; }
+    .chart-inline { height: 200px; }
+    .row-count { font-weight: 400; color: var(--muted); font-size: 0.875rem; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.75rem;
+    }
+    @media (max-width: 700px) {
+      .cards { grid-template-columns: repeat(2, 1fr); }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: var(--shadow-card);
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+    }
+    .card:hover {
+      background: var(--card-hover);
+      border-color: #d1d5db;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    }
+    .card .label {
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.35rem;
+    }
+    .card .value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .card.pass .value { color: var(--pass); }
+    .card.fail .value { color: var(--fail); }
+    .card.pass { border-left: 3px solid var(--pass); }
+    .card.fail { border-left: 3px solid var(--fail); }
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0 0 1rem 0;
+      padding-bottom: 0.5rem;
+    }
+    .charts {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      margin-bottom: 1.75rem;
+    }
+    @media (max-width: 1000px) {
+      .charts { grid-template-columns: 1fr; }
+    }
+    .chart-wrap {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      height: 300px;
+      box-shadow: var(--shadow-card);
+    }
+    .chart-wrap h3 {
+      margin: 0 0 0.75rem 0;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .table-section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-card);
+    }
+    .table-section .section-title {
+      padding: 1rem 1.25rem 0;
+      margin: 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    thead { background: var(--bg); }
+    th {
+      padding: 0.75rem 1.25rem;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 0.75rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    tbody tr:hover { background: var(--bg); }
+    tbody tr:last-child td { border-bottom: none; }
+    .result-P { color: var(--pass); font-weight: 600; }
+    .result-F { color: var(--fail); font-weight: 600; }
+    .section { margin-bottom: 1.5rem; }
+    .loading {
+      color: var(--text-secondary);
+      padding: 1.25rem;
+      font-size: 0.875rem;
+    }
+    .error { color: var(--fail); padding: 1.25rem; }
+    .no-data-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: var(--radius);
+      font-size: 0.875rem;
+      color: #92400e;
+    }
+    .no-data-banner .btn-apply { flex-shrink: 0; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <h1>L10 Realtime Dashboard</h1>
+      <div class="header-meta" id="headerMeta">Updated – | Window: – | Auto refresh: 60s</div>
+    </header>
+
+    <div class="toolbar">
+      <div class="filter-group">
+        <label>DATE (SAN JOSE)</label>
+        <span class="filter-value" id="dateDisplay">–</span>
+      </div>
+      <div class="filter-group">
+        <label for="range">WINDOW</label>
+        <select id="range">
+          <option value="24">Last 24 hours</option>
+          <option value="7">Last 7 days</option>
+          <option value="today">Today (Pacific)</option>
+          <option value="yesterday">Yesterday (Pacific)</option>
+          <option value="all">All data</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="modelFilter">MODEL</label>
+        <select id="modelFilter">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="stationFilter">STATION</label>
+        <select id="stationFilter">
+          <option value="">All</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>LINE</label>
+        <span class="filter-value">L10</span>
+      </div>
+      <div class="filter-group">
+        <label for="serialSearch">SERIAL SEARCH</label>
+        <input type="text" id="serialSearch" placeholder="Serial" class="filter-input">
+      </div>
+      <div class="filter-group">
+        <label for="maxRows">MAX ROWS</label>
+        <input type="number" id="maxRows" value="500" min="1" max="2000" class="filter-input filter-input-narrow">
+      </div>
+      <div class="toolbar-actions">
+        <button type="button" id="apply" class="btn-apply">Apply Filters</button>
+        <button type="button" id="refresh" class="btn-secondary">Refresh Now</button>
+        <button type="button" id="clearFilters" class="btn-secondary">Clear</button>
+      </div>
+    </div>
+
+    <div id="noDataBanner" class="no-data-banner" style="display:none;">
+      <span>No data in this time range. Try <strong>All data</strong> in the Window filter, or load sample data to see the dashboard.</span>
+      <button type="button" id="loadSampleData" class="btn-apply">Load sample data</button>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">TRAYS TESTED</div>
+        <div class="kpi-value" id="traysTested">–</div>
+      </div>
+      <div class="kpi-card kpi-pass">
+        <div class="kpi-label">TRAYS PASSED</div>
+        <div class="kpi-value" id="traysPassed">–</div>
+      </div>
+      <div class="kpi-card kpi-fail">
+        <div class="kpi-label">TRAYS FAILED</div>
+        <div class="kpi-value" id="traysFailed">–</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">IN PROGRESS</div>
+        <div class="kpi-value" id="inProgress">0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">PASS %</div>
+        <div class="kpi-value" id="passPct">–</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">TOTAL EVENTS</div>
+        <div class="kpi-value" id="totalEvents">–</div>
+      </div>
+      <div class="kpi-card kpi-fail">
+        <div class="kpi-label">FAIL EVENTS</div>
+        <div class="kpi-value" id="failEvents">–</div>
+      </div>
+    </div>
+
+    <div class="chart-row">
+      <div class="chart-wrap chart-wide">
+        <h3>Hourly Trend (click bar to drill by hour)</h3>
+        <canvas id="chartHour"></canvas>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="panel">
+        <h3 class="panel-title">Outcome Mix</h3>
+        <div class="outcome-mix">
+          <div>Pass: <strong id="outcomePass">0</strong></div>
+          <div>Fail: <strong id="outcomeFail">0</strong></div>
+          <div>In Progress: <strong>0</strong></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3 class="panel-title">Top Models (latest status)</h3>
+        <ul class="top-list" id="topModels"></ul>
+      </div>
+      <div class="panel">
+        <h3 class="panel-title">Top Fail Stations</h3>
+        <ul class="top-list" id="topFailStations"></ul>
+      </div>
+      <div class="panel">
+        <h3 class="panel-title">By station (chart)</h3>
+        <div class="chart-inline">
+          <canvas id="chartStation"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-row">
+      <div class="chart-wrap">
+        <h3>By model</h3>
+        <canvas id="chartModel"></canvas>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="table-section">
+        <h2 class="section-title">Latest Status Per Serial <span class="row-count" id="rowCount"></span></h2>
+        <div id="recentLoading" class="loading">Loading…</div>
+        <table id="recentTable" style="display:none;">
+          <thead>
+            <tr>
+              <th>TIME</th>
+              <th>SERIAL</th>
+              <th>MODEL</th>
+              <th>LINE</th>
+              <th>STATION</th>
+              <th>RESULT</th>
+              <th>ERROR CODE</th>
+              <th>ERROR DESCRIPTION</th>
+              <th>DETAIL</th>
+            </tr>
+          </thead>
+          <tbody id="recentBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const PACIFIC = 'America/Los_Angeles';
+    let lastStats = null;
+    let lastRecentList = [];
+    let autoRefreshTimer = null;
+
+    function formatPacific(utcSeconds) {
+      if (utcSeconds == null) return '–';
+      const d = new Date(utcSeconds * 1000);
+      return d.toLocaleString('en-US', { timeZone: PACIFIC, dateStyle: 'short', timeStyle: 'medium' });
+    }
+
+    function formatTimePST(utcSeconds) {
+      if (utcSeconds == null) return '–';
+      const d = new Date(utcSeconds * 1000);
+      return d.toLocaleString('en-US', { timeZone: PACIFIC, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '');
+    }
+
+    function formatWindowPST(fromTs, toTs) {
+      if (fromTs == null && toTs == null) return 'All data';
+      const f = fromTs != null ? new Date(fromTs * 1000).toLocaleString('en-US', { timeZone: PACIFIC, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '–';
+      const t = toTs != null ? new Date(toTs * 1000).toLocaleString('en-US', { timeZone: PACIFIC, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '–';
+      return f + ' PST -> ' + t + ' PST';
+    }
+
+    function getRangeParams() {
+      const range = document.getElementById('range').value;
+      let from, to;
+      const now = Date.now() / 1000;
+      if (range === '24') {
+        from = now - 24 * 3600;
+        to = null;
+      } else if (range === '7') {
+        from = now - 7 * 24 * 3600;
+        to = null;
+      } else if (range === 'today' || range === 'yesterday') {
+        const d = new Date();
+        const pacific = new Date(d.toLocaleString('en-US', { timeZone: PACIFIC }));
+        pacific.setHours(0, 0, 0, 0);
+        if (range === 'yesterday') pacific.setDate(pacific.getDate() - 1);
+        from = pacific.getTime() / 1000;
+        const end = new Date(pacific);
+        end.setDate(end.getDate() + 1);
+        to = end.getTime() / 1000;
+      } else {
+        from = null;
+        to = null;
+      }
+      return { from: from || undefined, to: to || undefined };
+    }
+
+    function query(q) {
+      const params = new URLSearchParams(q);
+      return fetch('/api/stats?' + params).then(r => r.json());
+    }
+
+    function recent(q) {
+      const limit = parseInt(document.getElementById('maxRows').value, 10) || 500;
+      const params = new URLSearchParams({ limit: Math.min(limit, 2000), ...q });
+      return fetch('/api/recent?' + params).then(r => r.json());
+    }
+
+    function updateHeaderMeta(from, to) {
+      const now = new Date();
+      const updated = now.toLocaleString('en-US', { timeZone: PACIFIC, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+      document.getElementById('headerMeta').textContent = 'Updated ' + updated + ' | Window: ' + formatWindowPST(from, to) + ' | Auto refresh: 60s';
+      document.getElementById('dateDisplay').textContent = now.toLocaleDateString('en-US', { timeZone: PACIFIC, month: '2-digit', day: '2-digit', year: 'numeric' });
+    }
+
+    let chartHour, chartStation, chartModel;
+
+    function renderCharts(stats, from, to) {
+      const opts = { responsive: true, maintainAspectRatio: false };
+
+      const perHour = stats.tests_per_hour || [];
+      const hourLabels = perHour.map(h => {
+        const [date, hour] = h.hour_utc.split(' ');
+        const d = new Date(date + 'T' + hour + ':00:00Z');
+        return d.toLocaleString('en-US', { timeZone: PACIFIC, hour: '2-digit', minute: '2-digit', hour12: false });
+      });
+      if (chartHour) chartHour.destroy();
+      chartHour = new Chart(document.getElementById('chartHour'), {
+        type: 'bar',
+        data: {
+          labels: hourLabels,
+          datasets: [{ label: 'Tests', data: perHour.map(h => h.count), backgroundColor: 'rgba(37, 99, 235, 0.5)' }]
+        },
+        options: { ...opts, scales: { y: { beginAtZero: true } } }
+      });
+
+      const byStation = stats.by_station || {};
+      const stations = Object.keys(byStation).sort();
+      if (chartStation) chartStation.destroy();
+      chartStation = new Chart(document.getElementById('chartStation'), {
+        type: 'bar',
+        data: {
+          labels: stations,
+          datasets: [
+            { label: 'Pass', data: stations.map(s => (byStation[s] && byStation[s].P) || 0), backgroundColor: '#16a34a' },
+            { label: 'Fail', data: stations.map(s => (byStation[s] && byStation[s].F) || 0), backgroundColor: '#dc2626' }
+          ]
+        },
+        options: { ...opts, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+      });
+
+      const byModel = stats.by_model || {};
+      const models = Object.keys(byModel)
+        .sort((a, b) => (byModel[b].P + byModel[b].F) - (byModel[a].P + byModel[a].F))
+        .slice(0, 10);
+      if (chartModel) chartModel.destroy();
+      chartModel = new Chart(document.getElementById('chartModel'), {
+        type: 'bar',
+        data: {
+          labels: models,
+          datasets: [
+            { label: 'Pass', data: models.map(m => (byModel[m] && byModel[m].P) || 0), backgroundColor: '#16a34a' },
+            { label: 'Fail', data: models.map(m => (byModel[m] && byModel[m].F) || 0), backgroundColor: '#dc2626' }
+          ]
+        },
+        options: { ...opts, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+      });
+    }
+
+    function populateFilters(stats) {
+      const byModel = stats.by_model || {};
+      const byStation = stats.by_station || {};
+      const modelSelect = document.getElementById('modelFilter');
+      const stationSelect = document.getElementById('stationFilter');
+      const currentModel = modelSelect.value;
+      const currentStation = stationSelect.value;
+      modelSelect.innerHTML = '<option value="">All</option>';
+      stationSelect.innerHTML = '<option value="">All</option>';
+      Object.keys(byModel).sort().forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        if (opt.value === currentModel) opt.selected = true;
+        modelSelect.appendChild(opt);
+      });
+      Object.keys(byStation).sort().forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        if (opt.value === currentStation) opt.selected = true;
+        stationSelect.appendChild(opt);
+      });
+    }
+
+    function applyFiltersToList(list) {
+      const serialSearch = (document.getElementById('serialSearch').value || '').trim().toLowerCase();
+      const modelFilter = (document.getElementById('modelFilter').value || '').trim();
+      const stationFilter = (document.getElementById('stationFilter').value || '').trim();
+      return list.filter(r => {
+        if (serialSearch && !(r.serial || '').toLowerCase().includes(serialSearch)) return false;
+        if (modelFilter && r.model !== modelFilter) return false;
+        if (stationFilter && r.station !== stationFilter) return false;
+        return true;
+      });
+    }
+
+    function applyRange() {
+      const { from, to } = getRangeParams();
+      const q = {};
+      if (from != null) q.from = from;
+      if (to != null) q.to = to;
+
+      Promise.all([query(q), recent(q)]).then(([stats, recentList]) => {
+        lastStats = stats;
+        lastRecentList = recentList;
+        updateHeaderMeta(from, to);
+        populateFilters(stats);
+
+        const byResult = stats.by_result || {};
+        const pass = byResult.P || 0;
+        const fail = byResult.F || 0;
+        const total = pass + fail;
+
+        document.getElementById('traysTested').textContent = total;
+        document.getElementById('traysPassed').textContent = pass;
+        document.getElementById('traysFailed').textContent = fail;
+        document.getElementById('inProgress').textContent = '0';
+        document.getElementById('passPct').textContent = total ? (100 * pass / total).toFixed(2) + '%' : '0.00%';
+        document.getElementById('totalEvents').textContent = total;
+        document.getElementById('failEvents').textContent = fail;
+
+        const noDataBanner = document.getElementById('noDataBanner');
+        if (total === 0) {
+          noDataBanner.style.display = 'flex';
+        } else {
+          noDataBanner.style.display = 'none';
+        }
+
+        document.getElementById('outcomePass').textContent = pass;
+        document.getElementById('outcomeFail').textContent = fail;
+
+        const byModel = stats.by_model || {};
+        const topModels = Object.keys(byModel)
+          .map(m => ({ model: m, total: (byModel[m].P || 0) + (byModel[m].F || 0) }))
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 8);
+        document.getElementById('topModels').innerHTML = topModels.map(x => '<li><span>' + x.model + '</span><span>' + x.total + '</span></li>').join('');
+
+        const byStation = stats.by_station || {};
+        const topFailStations = Object.keys(byStation)
+          .filter(s => (byStation[s].F || 0) > 0)
+          .map(s => ({ station: s, count: byStation[s].F }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 8);
+        document.getElementById('topFailStations').innerHTML = topFailStations.length
+          ? topFailStations.map(x => '<li><span>' + x.station + '</span><span>' + x.count + '</span></li>').join('')
+          : '<li><span>–</span><span>0</span></li>';
+
+        renderCharts(stats, from, to);
+        renderTable(recentList);
+      }).catch(e => {
+        document.getElementById('recentLoading').textContent = 'Error: ' + e.message;
+        document.getElementById('recentLoading').className = 'error';
+      });
+    }
+
+    function renderTable(recentList) {
+      const filtered = applyFiltersToList(recentList);
+      const tbody = document.getElementById('recentBody');
+      tbody.innerHTML = filtered.map(r => `
+        <tr>
+          <td>${formatTimePST(r.zip_created_utc)}</td>
+          <td>${r.serial || '–'}</td>
+          <td>${r.model || '–'}</td>
+          <td>L10</td>
+          <td>${r.station || '–'}</td>
+          <td class="result-${r.result || ''}">${r.result || '–'}</td>
+          <td>N/A</td>
+          <td>N/A</td>
+          <td>–</td>
+        </tr>
+      `).join('');
+      document.getElementById('rowCount').textContent = 'Rows: ' + filtered.length;
+      document.getElementById('recentLoading').style.display = 'none';
+      document.getElementById('recentTable').style.display = 'table';
+    }
+
+    document.getElementById('apply').addEventListener('click', applyRange);
+    document.getElementById('refresh').addEventListener('click', applyRange);
+    document.getElementById('clearFilters').addEventListener('click', () => {
+      document.getElementById('serialSearch').value = '';
+      document.getElementById('modelFilter').value = '';
+      document.getElementById('stationFilter').value = '';
+      if (lastRecentList.length) renderTable(lastRecentList);
+    });
+    document.getElementById('serialSearch').addEventListener('input', () => { if (lastRecentList.length) renderTable(lastRecentList); });
+    document.getElementById('modelFilter').addEventListener('change', () => { if (lastRecentList.length) renderTable(lastRecentList); });
+    document.getElementById('stationFilter').addEventListener('change', () => { if (lastRecentList.length) renderTable(lastRecentList); });
+
+    document.getElementById('loadSampleData').addEventListener('click', () => {
+      const btn = document.getElementById('loadSampleData');
+      btn.disabled = true;
+      btn.textContent = 'Loading…';
+      fetch('/api/seed-sample', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          if (data.ok) {
+            applyRange();
+          } else {
+            alert('Failed: ' + (data.error || 'Unknown error'));
+          }
+        })
+        .catch(e => alert('Error: ' + e.message))
+        .finally(() => { btn.disabled = false; btn.textContent = 'Load sample data'; });
+    });
+
+    applyRange();
+    setInterval(applyRange, 60000);
+  </script>
+</body>
+</html>

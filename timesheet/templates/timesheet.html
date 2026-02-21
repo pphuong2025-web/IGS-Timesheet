@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+{% block title %}Timesheet – {{ week_start }} to {{ week_end }}{% endblock %}
+{% block container_class %}container--wide{% endblock %}
+
+{% block content %}
+<h1>{% if combined_employees_week_by_shift %}Combined timesheet – Week {{ week_start }}{% elif all_shifts_week %}All shifts – Week {{ week_start }}{% elif shift_employees_week %}{{ shift_filter | capitalize }} shift – Week {{ week_start }}{% elif is_admin and target_employee_id %}Timesheet for {{ target_employee_name }}{% else %}My Timesheet{% endif %}</h1>
+{% if is_admin %}
+<div style="margin-bottom: 1rem;">
+  <span style="color: var(--text-muted); margin-right: 0.5rem;">Shift:</span>
+  <a href="{{ url_for('timesheet', week=week_start.isoformat()) }}" class="btn {{ 'btn-secondary' if not (shift_filter or all_shifts_week or combined_employees_week_by_shift) else '' }}" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">All</a>
+  <a href="{{ url_for('timesheet', week=week_start.isoformat(), shift='combined') }}" class="btn {{ 'btn-secondary' if shift_filter != 'combined' else '' }}" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Combined</a>
+  <a href="{{ url_for('timesheet', week=week_start.isoformat(), shift='day') }}" class="btn {{ 'btn-secondary' if shift_filter != 'day' else '' }}" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Day</a>
+  <a href="{{ url_for('timesheet', week=week_start.isoformat(), shift='swing') }}" class="btn {{ 'btn-secondary' if shift_filter != 'swing' else '' }}" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Swing</a>
+  <a href="{{ url_for('timesheet', week=week_start.isoformat(), shift='graveyard') }}" class="btn {{ 'btn-secondary' if shift_filter != 'graveyard' else '' }}" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Graveyard</a>
+</div>
+{% if is_admin and ((employees and not shift_filter and not all_shifts_week and not combined_employees_week_by_shift) or (admin_viewing_single_employee and all_employees_for_admin)) %}
+{% set picker_employees = all_employees_for_admin if admin_viewing_single_employee else employees %}
+<div class="form-group" style="max-width: 280px; margin-bottom: 1rem;">
+  <label for="employee_picker">View / edit employee{% if admin_viewing_single_employee %} (change employee){% else %} ({{ shift_filter | capitalize if shift_filter else 'All' }}){% endif %}</label>
+  <select id="employee_picker" style="width: 100%; padding: 0.5rem;">
+    {% for e in picker_employees %}
+    <option value="{{ e.id }}" {{ 'selected' if e.id == target_employee_id else '' }}>{{ e.full_name }}{% if e.is_admin %} (Admin){% endif %}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endif %}
+{% endif %}
+<p style="color: var(--text-muted); margin-bottom: 1rem;">
+  Week: Monday {{ week_start }} – Sunday {{ week_end }}.
+  Overtime = hours over 8 per day (after deducting lunch).
+</p>
+<div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+  {% if is_admin %}
+  {% if shift_filter or all_shifts_week %}
+  <a href="{{ url_for('timesheet', week=prev_week.isoformat()) if all_shifts_week else url_for('timesheet', week=prev_week.isoformat(), shift=shift_filter) }}" class="btn btn-secondary">← Previous week</a>
+  <span><strong>{{ week_start }}</strong> to <strong>{{ week_end }}</strong></span>
+  <a href="{{ url_for('timesheet', week=next_week.isoformat()) if all_shifts_week else url_for('timesheet', week=next_week.isoformat(), shift=shift_filter) }}" class="btn btn-secondary">Next week →</a>
+  {% else %}
+  <a href="{{ url_for('timesheet', week=prev_week.isoformat(), employee_id=target_employee_id) }}" class="btn btn-secondary">← Previous week</a>
+  <span><strong>{{ week_start }}</strong> to <strong>{{ week_end }}</strong></span>
+  <a href="{{ url_for('timesheet', week=next_week.isoformat(), employee_id=target_employee_id) }}" class="btn btn-secondary">Next week →</a>
+  {% endif %}
+  {% else %}
+  <a href="{{ url_for('timesheet', week=prev_week.isoformat()) }}" class="btn btn-secondary">← Previous week</a>
+  <span><strong>{{ week_start }}</strong> to <strong>{{ week_end }}</strong></span>
+  <a href="{{ url_for('timesheet', week=next_week.isoformat()) }}" class="btn btn-secondary">Next week →</a>
+  {% endif %}
+  <a href="{{ url_for('export_week', week_start=week_start.isoformat(), shift=shift_filter) if shift_filter else url_for('export_week', week_start=week_start.isoformat()) }}" class="btn">Export to Excel</a>
+</div>
+
+{% if combined_employees_week_by_shift %}
+{% if is_admin and all_employees_for_admin %}
+<div class="form-group" style="max-width: 320px; margin-bottom: 1rem;">
+  <label for="admin_jump_employee">View / edit any employee</label>
+  <select id="admin_jump_employee" style="width: 100%; padding: 0.5rem;">
+    <option value="">-- Select employee --</option>
+    {% for e in all_employees_for_admin %}
+    <option value="{{ e.id }}">{{ e.full_name }}{% if e.is_admin %} (Admin){% endif %}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endif %}
+<p style="color: var(--text-muted); margin-bottom: 0.5rem;">All employees (working or not) from all shifts in one table. Shifts separated by row. Click Edit to enter or change times.</p>
+<div class="timesheet-week-wrap">
+<table class="timesheet-week-table">
+  <thead>
+    <tr>
+      <th class="col-no">No.</th>
+      <th class="col-name">Name</th>
+      {% for d in dates_in_week %}
+      <th colspan="3">{{ day_names[loop.index0] }} {{ d.day }}/{{ d.month }}</th>
+      {% endfor %}
+      <th class="col-att">Att.</th>
+      <th class="col-ot">OT</th>
+      <th class="col-total">Total</th>
+      <th class="col-edit"></th>
+    </tr>
+    <tr>
+      <th></th>
+      <th></th>
+      {% for d in dates_in_week %}
+      <th class="day-in">Attendance</th><th class="day-out">Overtime</th><th class="day-remark">Remark</th>
+      {% endfor %}
+      <th></th><th></th><th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for shift_key in ['day', 'swing', 'graveyard', 'unassigned'] %}
+    {% set roster = combined_employees_week_by_shift[shift_key] %}
+    {% if roster %}
+    <tr style="background: var(--border-color, #ddd); font-weight: bold;">
+      <td colspan="27" style="padding: 0.4rem 0.5rem;">{{ shift_key | capitalize }} shift</td>
+    </tr>
+    {% for row in roster %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ row.employee.full_name }}</td>
+      {% for d in row.days %}
+      <td>{{ "%.2f" | format(d.regular_hours) if (d.regular_hours or 0) else '–' }}</td>
+      <td>{{ "%.2f" | format(d.overtime_hours) if (d.overtime_hours or 0) else '–' }}</td>
+      <td>{{ d.notes or '–' }}</td>
+      {% endfor %}
+      <td>{{ "%.2f" | format(row.attendance) }}</td>
+      <td>{{ "%.2f" | format(row.overtime_total) }}</td>
+      <td>{{ "%.2f" | format(row.total_hours) }}</td>
+      <td>
+        <a href="{{ url_for('timesheet', week=week_start.isoformat(), employee_id=row.employee.id) if shift_key == 'unassigned' else url_for('timesheet', week=week_start.isoformat(), shift=shift_key, employee_id=row.employee.id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Edit</a>
+      </td>
+    </tr>
+    {% endfor %}
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% elif all_shifts_week %}
+{% if is_admin and all_employees_for_admin %}
+<div class="form-group" style="max-width: 320px; margin-bottom: 1rem;">
+  <label for="admin_jump_employee_all">View / edit any employee</label>
+  <select id="admin_jump_employee_all" style="width: 100%; padding: 0.5rem;">
+    <option value="">-- Select employee --</option>
+    {% for e in all_employees_for_admin %}
+    <option value="{{ e.id }}">{{ e.full_name }}{% if e.is_admin %} (Admin){% endif %}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endif %}
+<p style="color: var(--text-muted); margin-bottom: 1rem;">All employees by shift (whether they worked or not). Click Edit to enter or change times.</p>
+{% for shift_key in ['day', 'swing', 'graveyard'] %}
+{% set roster = all_shifts_week[shift_key] %}
+<section style="margin-bottom: 2rem;">
+  <h2 style="font-size: 1.25rem; margin-bottom: 0.5rem;">{{ shift_key | capitalize }} shift</h2>
+  <div class="timesheet-week-wrap">
+  <table class="timesheet-week-table">
+    <thead>
+      <tr>
+        <th class="col-no">No.</th>
+        <th class="col-name">Name</th>
+        {% for d in dates_in_week %}
+        <th colspan="3">{{ day_names[loop.index0] }} {{ d.day }}/{{ d.month }}</th>
+        {% endfor %}
+        <th class="col-att">Att.</th>
+        <th class="col-ot">OT</th>
+        <th class="col-total">Total</th>
+        <th class="col-edit"></th>
+      </tr>
+      <tr>
+        <th></th>
+        <th></th>
+        {% for d in dates_in_week %}
+        <th class="day-in">Attendance</th><th class="day-out">Overtime</th><th class="day-remark">Remark</th>
+        {% endfor %}
+        <th></th><th></th><th></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in roster %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ row.employee.full_name }}</td>
+        {% for d in row.days %}
+        <td>{{ "%.2f" | format(d.regular_hours) if (d.regular_hours or 0) else '–' }}</td>
+        <td>{{ "%.2f" | format(d.overtime_hours) if (d.overtime_hours or 0) else '–' }}</td>
+        <td>{{ d.notes or '–' }}</td>
+        {% endfor %}
+        <td>{{ "%.2f" | format(row.attendance) }}</td>
+        <td>{{ "%.2f" | format(row.overtime_total) }}</td>
+        <td>{{ "%.2f" | format(row.total_hours) }}</td>
+        <td>
+          <a href="{{ url_for('timesheet', week=week_start.isoformat(), shift=shift_key, employee_id=row.employee.id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Edit</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if not roster %}
+  <p style="color: var(--text-muted); margin-top: 0.5rem;">No employees assigned to this shift.</p>
+  {% endif %}
+</section>
+{% endfor %}
+{% elif shift_filter and not admin_viewing_single_employee %}
+{% if is_admin and all_employees_for_admin %}
+<div class="form-group" style="max-width: 320px; margin-bottom: 1rem;">
+  <label for="admin_jump_employee_shift">View / edit any employee</label>
+  <select id="admin_jump_employee_shift" style="width: 100%; padding: 0.5rem;">
+    <option value="">-- Select employee --</option>
+    {% for e in all_employees_for_admin %}
+    <option value="{{ e.id }}">{{ e.full_name }}{% if e.is_admin %} (Admin){% endif %}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endif %}
+<p style="color: var(--text-muted); margin-bottom: 0.5rem;">All employees in this shift (whether they worked or not). Click Edit to enter or change times.</p>
+<div class="timesheet-week-wrap">
+<table class="timesheet-week-table">
+  <thead>
+    <tr>
+      <th class="col-no">No.</th>
+      <th class="col-name">Name</th>
+      {% for d in dates_in_week %}
+      <th colspan="3">{{ day_names[loop.index0] }} {{ d.day }}/{{ d.month }}</th>
+      {% endfor %}
+      <th class="col-att">Att.</th>
+      <th class="col-ot">OT</th>
+      <th class="col-total">Total</th>
+      <th class="col-edit"></th>
+    </tr>
+    <tr>
+      <th></th>
+      <th></th>
+      {% for d in dates_in_week %}
+      <th class="day-in">Attendance</th><th class="day-out">Overtime</th><th class="day-remark">Remark</th>
+      {% endfor %}
+      <th></th><th></th><th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in shift_employees_week %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ row.employee.full_name }}</td>
+      {% for d in row.days %}
+      <td>{{ "%.2f" | format(d.regular_hours) if (d.regular_hours or 0) else '–' }}</td>
+      <td>{{ "%.2f" | format(d.overtime_hours) if (d.overtime_hours or 0) else '–' }}</td>
+      <td>{{ d.notes or '–' }}</td>
+      {% endfor %}
+      <td>{{ "%.2f" | format(row.attendance) }}</td>
+      <td>{{ "%.2f" | format(row.overtime_total) }}</td>
+      <td>{{ "%.2f" | format(row.total_hours) }}</td>
+      <td>
+        <a href="{{ url_for('timesheet', week=week_start.isoformat(), shift=shift_filter, employee_id=row.employee.id) }}" class="btn btn-secondary" style="padding: 0.35rem 0.7rem; font-size: 0.85rem;">Edit</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if not shift_employees_week %}
+<p style="color: var(--text-muted); margin-top: 0.5rem;">No employees assigned to this shift.</p>
+{% endif %}
+{% else %}
+<div class="timesheet-week-wrap">
+<table class="timesheet-week-table timesheet-day-rows-table">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Day</th>
+      <th>Clock In</th>
+      <th>Clock Out</th>
+      <th>Lunch Start</th>
+      <th>Lunch End</th>
+      <th>Regular</th>
+      <th>Overtime</th>
+      <th>Graveyard</th>
+      <th>Notes</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for d in days %}
+    <tr data-date="{{ d.work_date }}">
+      <td>{{ d.work_date }}</td>
+      <td>{{ d.day_name }}</td>
+      <td><input type="time" data-field="clock_in" value="{{ d.clock_in or '' }}" data-date="{{ d.work_date }}"></td>
+      <td><input type="time" data-field="clock_out" value="{{ d.clock_out or '' }}" data-date="{{ d.work_date }}"></td>
+      <td><input type="time" data-field="lunch_start" value="{{ d.lunch_start or '' }}" data-date="{{ d.work_date }}" title="Lunch start"></td>
+      <td><input type="time" data-field="lunch_end" value="{{ d.lunch_end or '' }}" data-date="{{ d.work_date }}" title="Lunch end"></td>
+      <td>{{ "%.2f" | format(d.regular_hours) }}</td>
+      <td>{{ "%.2f" | format(d.overtime_hours) }}</td>
+      <td class="{{ 'graveyard' if d.is_graveyard else '' }}">{{ 'Yes' if d.is_graveyard else '–' }}</td>
+      <td>
+        <select data-field="notes" data-date="{{ d.work_date }}" style="min-width: 100px;">
+          <option value="">--</option>
+          <option value="Sick leave" {{ 'selected' if d.notes == 'Sick leave' else '' }}>Sick leave</option>
+          <option value="PTO" {{ 'selected' if d.notes == 'PTO' else '' }}>PTO</option>
+          <option value="Non Pay" {{ 'selected' if d.notes == 'Non Pay' else '' }}>Non Pay</option>
+          {% if d.notes and d.notes not in ['Sick leave', 'PTO', 'Non Pay'] %}
+          <option value="{{ d.notes }}" selected>{{ d.notes }}</option>
+          {% endif %}
+        </select>
+      </td>
+      <td>
+        <button type="button" class="btn btn-secondary save-row" data-date="{{ d.work_date }}">Save</button>
+        <button type="button" class="btn btn-secondary clear-row" data-date="{{ d.work_date }}" title="Clear this day">Clear</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div style="margin-top: 1.5rem; max-width: 320px;">
+  <table style="width: auto;">
+    <tbody>
+      <tr>
+        <td style="padding: 0.5rem 1rem 0.25rem 0;"><strong>Attendance</strong></td>
+        <td style="padding: 0.5rem 0 0.25rem 1rem;">{{ "%.2f" | format(attendance) }} hrs</td>
+        <td style="color: var(--text-muted); font-size: 0.85rem;">(regular hours, max 40)</td>
+      </tr>
+      <tr>
+        <td style="padding: 0.25rem 1rem;"><strong>Overtime</strong></td>
+        <td style="padding: 0.25rem 0 0.25rem 1rem;">{{ "%.2f" | format(overtime_total) }} hrs</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td style="padding: 0.25rem 1rem 0.5rem 0;"><strong>Total</strong></td>
+        <td style="padding: 0.25rem 0 0.5rem 1rem;">{{ "%.2f" | format(total_hours) }} hrs</td>
+        <td></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 1rem;">Click Save on a row to store that day. Working time = Clock out − Clock in − Lunch. Regular/overtime and graveyard update when you reload.</p>
+
+<script>
+(function() {
+  var targetEmployeeId = {{ target_employee_id }};
+  var isAdmin = {{ 'true' if is_admin else 'false' }};
+  var weekIso = '{{ week_start.isoformat() }}';
+  var shiftFilter = '{{ shift_filter or '' }}';
+  var picker = document.getElementById('employee_picker');
+  if (picker) {
+    picker.addEventListener('change', function() {
+      var url = '{{ url_for("timesheet") }}?week=' + weekIso + '&employee_id=' + this.value;
+      if (shiftFilter) url += '&shift=' + shiftFilter;
+      window.location.href = url;
+    });
+  }
+  document.querySelectorAll('#admin_jump_employee, #admin_jump_employee_all, #admin_jump_employee_shift').forEach(function(sel) {
+    if (!sel) return;
+    sel.addEventListener('change', function() {
+      var v = this.value;
+      if (!v) return;
+      var url = '{{ url_for("timesheet") }}?week=' + weekIso + '&employee_id=' + v;
+      if (shiftFilter) url += '&shift=' + shiftFilter;
+      window.location.href = url;
+    });
+  });
+  function savePayload(tr, date, clearDay) {
+    var payload = {
+      work_date: date,
+      clock_in: clearDay ? null : (tr.querySelector('[data-field="clock_in"]').value || null),
+      clock_out: clearDay ? null : (tr.querySelector('[data-field="clock_out"]').value || null),
+      lunch_start: clearDay ? null : (tr.querySelector('[data-field="lunch_start"]').value || null),
+      lunch_end: clearDay ? null : (tr.querySelector('[data-field="lunch_end"]').value || null),
+      notes: clearDay ? null : (tr.querySelector('[data-field="notes"]').value || null)
+    };
+    if (isAdmin && targetEmployeeId) payload.employee_id = targetEmployeeId;
+    return payload;
+  }
+  document.querySelectorAll('.save-row').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var date = btn.getAttribute('data-date');
+      var tr = btn.closest('tr');
+      var payload = savePayload(tr, date, false);
+      fetch('{{ url_for("timesheet_save") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (data.ok) window.location.reload();
+        else alert(data.error || 'Save failed');
+      }).catch(function() { alert('Save failed'); });
+    });
+  });
+  document.querySelectorAll('.clear-row').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (!confirm('Clear this day\'s timesheet? Clock in/out, lunch, and notes will be removed.')) return;
+      var date = btn.getAttribute('data-date');
+      var tr = btn.closest('tr');
+      var payload = savePayload(tr, date, true);
+      fetch('{{ url_for("timesheet_save") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (data.ok) window.location.reload();
+        else alert(data.error || 'Clear failed');
+      }).catch(function() { alert('Clear failed'); });
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}
