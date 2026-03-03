@@ -12,6 +12,10 @@
     <input type="text" id="full_name" name="full_name" value="{{ employee.full_name if employee else '' }}" required style="width: 100%;">
   </div>
   <div class="form-group">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" value="{{ employee.username if employee else '' }}" required style="width: 100%;" placeholder="Login username">
+  </div>
+  <div class="form-group">
     <label for="password">Password {{ '(leave blank to keep current)' if employee else '' }}</label>
     <input type="password" id="password" name="password" {{ '' if employee else 'required' }} style="width: 100%;" placeholder="{{ '••••••••' if employee else '' }}">
   </div>
@@ -29,6 +33,14 @@
     <select id="employment_type" name="employment_type" style="width: 100%;">
       <option value="full_time" {{ 'selected' if not employee or (employee.employment_type or 'full_time').lower() == 'full_time' else '' }}>Full time</option>
       <option value="contractor" {{ 'selected' if employee and (employee.employment_type or '').lower() == 'contractor' else '' }}>Contractor</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label for="fa_mtf">FA / MTF</label>
+    <select id="fa_mtf" name="fa_mtf" style="width: 100%;">
+      <option value="">— None —</option>
+      <option value="fa" {{ 'selected' if employee and (employee.fa_mtf or '').lower() == 'fa' else '' }}>FA</option>
+      <option value="mtf" {{ 'selected' if employee and (employee.fa_mtf or '').lower() == 'mtf' else '' }}>MTF</option>
     </select>
   </div>
   <div class="form-group">

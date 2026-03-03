@@ -273,11 +273,13 @@
       <td>{{ "%.2f" | format(d.overtime_hours) }}</td>
       <td class="{{ 'graveyard' if d.is_graveyard else '' }}">{{ 'Yes' if d.is_graveyard else '–' }}</td>
       <td>
-        <select data-field="notes" data-date="{{ d.work_date }}" style="min-width: 100px;">
+        <select data-field="notes" data-date="{{ d.work_date }}" style="min-width: 100px;" title="{{ 'Time-off request was disapproved for this date' if d.work_date in dates_timeoff_disapproved else '' }}">
           <option value="">--</option>
+          {% if d.work_date not in dates_timeoff_disapproved %}
           <option value="Sick leave" {{ 'selected' if d.notes == 'Sick leave' else '' }}>Sick leave</option>
           <option value="PTO" {{ 'selected' if d.notes == 'PTO' else '' }}>PTO</option>
           <option value="Non Pay" {{ 'selected' if d.notes == 'Non Pay' else '' }}>Non Pay</option>
+          {% endif %}
           {% if d.notes and d.notes not in ['Sick leave', 'PTO', 'Non Pay'] %}
           <option value="{{ d.notes }}" selected>{{ d.notes }}</option>
           {% endif %}
@@ -382,6 +384,34 @@
         if (data.ok) window.location.reload();
         else alert(data.error || 'Clear failed');
       }).catch(function() { alert('Clear failed'); });
+    });
+  });
+
+  // Auto-tab: after filling a column, jump to the next (Clock In → Clock Out → Lunch Start → Lunch End → Notes)
+  var fieldOrder = ['clock_in', 'clock_out', 'lunch_start', 'lunch_end', 'notes'];
+  document.querySelectorAll('.timesheet-day-rows-table tbody tr[data-date]').forEach(function(tr) {
+    var inputs = fieldOrder.map(function(f) { return tr.querySelector('[data-field="' + f + '"]'); }).filter(Boolean);
+    function focusNextRowFirst() {
+      var nextTr = tr.nextElementSibling;
+      if (nextTr && nextTr.getAttribute('data-date')) {
+        var first = nextTr.querySelector('[data-field="clock_in"]');
+        if (first) first.focus();
+      }
+    }
+    inputs.forEach(function(el) {
+      el.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          var i = inputs.indexOf(el);
+          if (i < inputs.length - 1) inputs[i + 1].focus();
+          else focusNextRowFirst();
+        }
+      });
+      el.addEventListener('change', function() {
+        var i = inputs.indexOf(el);
+        if (i < inputs.length - 1) inputs[i + 1].focus();
+        else focusNextRowFirst();
+      });
     });
   });
 })();

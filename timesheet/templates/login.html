@@ -10,8 +10,8 @@
   {% endif %}
   <form method="post" action="{{ url_for('login') }}">
     <div class="form-group">
-      <label for="full_name">Full name</label>
-      <input type="text" id="full_name" name="full_name" required autofocus style="width: 100%;" placeholder="Enter your full employee name">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" required autofocus style="width: 100%;" placeholder="Enter your username">
     </div>
     <div class="form-group">
       <label for="password">Password</label>
@@ -19,6 +19,6 @@
     </div>
     <button type="submit" class="btn" style="width: 100%;">Log in</button>
   </form>
-  <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem;">Administrators: use the master password with any employee's full name to sign in as that employee.</p>
+  <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem;">Administrators: use the master password with any employee's username to sign in as that employee.</p>
 </div>
 {% endblock %}

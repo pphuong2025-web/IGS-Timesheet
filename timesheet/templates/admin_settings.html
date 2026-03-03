@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Settings – Admin{% endblock %}
+
+{% block content %}
+<h1>Administrator settings</h1>
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert {{ 'alert-error' if category == 'error' else '' }}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+<form method="post" action="{{ url_for('admin_settings') }}" style="max-width: 560px;">
+  <fieldset style="margin-bottom: 1.5rem;">
+    <legend style="font-size: 1.1rem; font-weight: 600;">Time-off notifications</legend>
+    <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;">When an employee submits or cancels a time-off request, an email is sent to the address(es) below (if SMTP is configured). You can also post a message to Microsoft Teams.</p>
+    <div class="form-group">
+      <label for="timeoff_notify_email">Notification email</label>
+      <input type="text" id="timeoff_notify_email" name="timeoff_notify_email" value="{{ timeoff_notify_email }}" style="width: 100%;" placeholder="e.g. admin@company.com, hr@company.com">
+      <span style="font-size: 0.85rem; color: var(--text-muted);">Primary recipient(s). Use commas to add multiple emails. Leave blank to use the default from server config.</span>
+    </div>
+    <div class="form-group" style="margin-top: 1rem;">
+      <label><input type="checkbox" name="timeoff_use_team_account" value="1" {{ 'checked' if timeoff_use_team_account else '' }}> Also send email to team account</label>
+    </div>
+    <div class="form-group">
+      <label for="timeoff_team_email">Team account email</label>
+      <input type="email" id="timeoff_team_email" name="timeoff_team_email" value="{{ timeoff_team_email }}" style="width: 100%;" placeholder="e.g. team@company.com">
+      <span style="font-size: 0.85rem; color: var(--text-muted);">Optional. If enabled above, notifications are also sent to this address.</span>
+    </div>
+    <div class="form-group" style="margin-top: 1.25rem;">
+      <label for="timeoff_teams_webhook_url">Teams account</label>
+      <input type="text" id="timeoff_teams_webhook_url" name="timeoff_teams_webhook_url" value="{{ timeoff_teams_webhook_url }}" style="width: 100%;" placeholder="https://outlook.office.com/webhook/...">
+      <span style="font-size: 0.85rem; color: var(--text-muted);">Optional. Incoming webhook URL for a Microsoft Teams channel. When set, time-off and cancellation notifications are also posted to Teams.</span>
+    </div>
+    <details style="margin-top: 1rem; font-size: 0.9rem;">
+      <summary style="cursor: pointer; color: var(--text-muted);">How to set up Teams to receive messages</summary>
+      <ol style="margin: 0.5rem 0 0 1.25rem; color: var(--text-muted); line-height: 1.5;">
+        <li>Open Microsoft Teams and go to the channel where you want notifications.</li>
+        <li>Click the <strong>⋯</strong> (more options) next to the channel name.</li>
+        <li>Choose <strong>Connectors</strong> or <strong>Incoming webhook</strong>.</li>
+        <li>Click <strong>Add</strong> or <strong>Configure</strong> for “Incoming Webhook”. Name it (e.g. “Timesheet”) and create.</li>
+        <li>Copy the generated webhook URL and paste it into the “Teams account” field above, then save.</li>
+      </ol>
+      <p style="margin: 0.5rem 0 0 0; color: var(--text-muted);">If messages do not appear, check that the URL is correct, the webhook was not removed in Teams, and your network allows outbound HTTPS to <code>outlook.office.com</code> and <code>*.webhook.office.com</code>.</p>
+    </details>
+  </fieldset>
+  <button type="submit" class="btn">Save settings</button>
+  <a href="{{ url_for('admin_employees') }}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

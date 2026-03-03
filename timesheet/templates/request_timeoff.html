@@ -43,10 +43,10 @@
     {% if ns.has_pending %}
     <span>Pending</span> — Waiting for Administrator approval
     {% else %}
-    <span>{% if ns.latest_status == 'approved' %}Approved{% elif ns.latest_status == 'rejected' %}Disapproved{% else %}—{% endif %}</span>
+    <span>{% if ns.latest_status == 'approved' %}Approved{% elif ns.latest_status == 'rejected' %}Disapproved{% elif ns.latest_status == 'cancelled' %}Cancelled{% else %}—{% endif %}</span>
     {% endif %}
   </div>
-  <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.75rem;">Your time off requests. Status updates when Administrator approves or disapproves.</p>
+  <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.75rem;">Your time off requests. Status updates when Administrator approves or disapproves. You may cancel a pending or approved request.</p>
   <table>
     <thead>
       <tr>
@@ -54,6 +54,7 @@
         <th>To</th>
         <th>Type</th>
         <th>Status</th>
+        <th>Action</th>
       </tr>
     </thead>
     <tbody>
@@ -63,7 +64,16 @@
         <td>{{ r.to_date }}</td>
         <td>{{ r.notes }}</td>
         <td>
-          {% if r.status == 'pending' %}Pending{% elif r.status == 'approved' %}Approved{% else %}Disapproved{% endif %}
+          {% if r.status == 'pending' %}Pending{% elif r.status == 'approved' %}Approved{% elif r.status == 'cancelled' %}Cancelled{% else %}Disapproved{% endif %}
+        </td>
+        <td>
+          {% if r.status in ('pending', 'approved') %}
+          <form method="post" action="{{ url_for('request_timeoff_cancel', request_id=r.id) }}" style="display: inline;">
+            <button type="submit" class="btn btn-secondary">Cancel</button>
+          </form>
+          {% else %}
+          —
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

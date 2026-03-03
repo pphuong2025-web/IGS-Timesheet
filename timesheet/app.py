@@ -32,18 +32,61 @@ logger = logging.getLogger(__name__)
 DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
 
 
+def _get_timeoff_notify_emails():
+    """Return list of email addresses to receive time-off notifications. Supports comma-separated in settings."""
+    primary_raw = (db.get_setting("timeoff_notify_email") or "").strip()
+    if not primary_raw:
+        primary_raw = (getattr(config, "TIMEOFF_NOTIFY_EMAIL", None) or "").strip()
+    emails = []
+    for part in primary_raw.replace(";", ",").split(","):
+        email = part.strip()
+        if email and "@" in email and email not in emails:
+            emails.append(email)
+    use_team = (db.get_setting("timeoff_use_team_account") or "").strip().lower() in ("1", "true", "yes")
+    team_email = (db.get_setting("timeoff_team_email") or "").strip()
+    if use_team and team_email and "@" in team_email and team_email not in emails:
+        emails.append(team_email)
+    return emails
+
+
+def _send_timeoff_to_teams(employee_name, from_str, to_str, notes, cancelled=False):
+    """Post a time-off notification to Microsoft Teams via Incoming Webhook. No-op if webhook URL not set."""
+    import json
+    from urllib.request import Request, urlopen
+    from urllib.error import URLError, HTTPError
+
+    webhook_url = (db.get_setting("timeoff_teams_webhook_url") or "").strip()
+    if not webhook_url or not webhook_url.startswith("https://"):
+        return
+    if cancelled:
+        title = "Time off request cancelled"
+        text = f"**{employee_name}** has cancelled their time-off request.\n\nType: {notes}\nFrom: {from_str} to {to_str}"
+    else:
+        title = "Time off request"
+        text = f"**{employee_name}** has submitted a time-off request.\n\nType: {notes}\nFrom: {from_str} to {to_str}"
+    # Simple text payload; Teams Incoming Webhook accepts {"text": "..."} for plain/markdown
+    payload = json.dumps({"text": f"### {title}\n\n{text}"}).encode("utf-8")
+    req = Request(webhook_url, data=payload, method="POST", headers={"Content-Type": "application/json"})
+    try:
+        with urlopen(req, timeout=10) as resp:
+            if 200 <= resp.status < 300:
+                logger.info("Time-off Teams notification sent for %s.", employee_name)
+    except (URLError, HTTPError, OSError) as e:
+        logger.warning("Time-off Teams webhook failed: %s", e)
+
+
 def _send_timeoff_notification(employee_name, from_str, to_str, notes):
-    """Send a time-off notification email to the configured address. No-op if SMTP is not configured."""
+    """Send a time-off notification email to the configured address(es). No-op if SMTP is not configured."""
     smtp_host = (getattr(config, "SMTP_HOST", None) or "").strip()
-    to_email = (getattr(config, "TIMEOFF_NOTIFY_EMAIL", None) or "").strip()
-    if not to_email:
-        logger.warning("Time-off email skipped: TIMEOFF_NOTIFY_EMAIL is not set.")
+    to_emails = _get_timeoff_notify_emails()
+    if not to_emails:
+        logger.warning("Time-off email skipped: no notification email configured.")
         return
     if not smtp_host:
         logger.warning(
             "Time-off email skipped: SMTP is not configured. Set TIMESHEET_SMTP_HOST (and optionally "
             "TIMESHEET_SMTP_PORT, TIMESHEET_SMTP_USER, TIMESHEET_SMTP_PASSWORD) to send notifications to %s.",
-            to_email,
+            to_emails,
         )
         return
     subject = f"Time off request: {employee_name} — {notes} ({from_str} to {to_str})"
@@ -60,22 +103,62 @@ def _send_timeoff_notification(employee_name, from_str, to_str, notes):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = from_addr
-    msg["To"] = to_email
+    msg["To"] = ", ".join(to_emails)
     msg.attach(MIMEText(body, "plain"))
     try:
         smtp_port = getattr(config, "SMTP_PORT", 587)
         use_tls = getattr(config, "SMTP_USE_TLS", True)
         smtp_user = (getattr(config, "SMTP_USER", None) or "").strip()
-        smtp_password = (getattr(config, "SMTP_PASSWORD", None) or "")
+        smtp_password = getattr(config, 'SMTP_PASSWORD', None) or ''
         with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as smtp:
             if use_tls:
                 smtp.starttls()
             if smtp_user and smtp_password:
                 smtp.login(smtp_user, smtp_password)
-            smtp.sendmail(from_addr, [to_email], msg.as_string())
-        logger.info("Time-off notification email sent to %s for %s.", to_email, employee_name)
+            smtp.sendmail(from_addr, to_emails, msg.as_string())
+        logger.info("Time-off notification email sent to %s for %s.", to_emails, employee_name)
     except Exception as e:
         logger.exception("Time-off email failed: %s", e)
+    _send_timeoff_to_teams(employee_name, from_str, to_str, notes, cancelled=False)
+
+
+def _send_timeoff_cancelled_notification(employee_name, from_str, to_str, notes):
+    """Send cancel notification to administrator. Uses same SMTP config and recipients as time-off notifications."""
+    smtp_host = (getattr(config, "SMTP_HOST", None) or "").strip()
+    to_emails = _get_timeoff_notify_emails()
+    if not to_emails or not smtp_host:
+        return
+    subject = f"Time off request cancelled: {employee_name} — {notes} ({from_str} to {to_str})"
+    body = (
+        f"An employee has cancelled their time-off request.\n\n"
+        f"Employee: {employee_name}\n"
+        f"Type: {notes}\n"
+        f"From: {from_str}\n"
+        f"To: {to_str}\n"
+    )
+    from_addr = (getattr(config, "SMTP_FROM", None) or "").strip() or (getattr(config, "SMTP_USER", None) or "")
+    if not from_addr:
+        from_addr = "timesheet@localhost"
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = ", ".join(to_emails)
+    msg.attach(MIMEText(body, "plain"))
+    try:
+        smtp_port = getattr(config, "SMTP_PORT", 587)
+        use_tls = getattr(config, "SMTP_USE_TLS", True)
+        smtp_user = (getattr(config, "SMTP_USER", None) or "").strip()
+        smtp_password = getattr(config, "SMTP_PASSWORD", None) or ""
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as smtp:
+            if use_tls:
+                smtp.starttls()
+            if smtp_user and smtp_password:
+                smtp.login(smtp_user, smtp_password)
+            smtp.sendmail(from_addr, to_emails, msg.as_string())
+        logger.info("Time-off cancelled notification sent to %s for %s.", to_emails, employee_name)
+    except Exception as e:
+        logger.exception("Time-off cancelled email failed: %s", e)
+    _send_timeoff_to_teams(employee_name, from_str, to_str, notes, cancelled=True)
 
 
 def _format_time_12h(t):
@@ -148,14 +231,14 @@ def index():
 def login():
     if flask.request.method == "GET":
         return flask.render_template("login.html")
-    full_name = (flask.request.form.get("full_name") or "").strip()
+    username = (flask.request.form.get("username") or "").strip()
     password = flask.request.form.get("password") or ""
-    if not full_name or not password:
-        return flask.render_template("login.html", error="Full name and password required.")
-    user = db.get_employee_by_full_name(full_name)
+    if not username or not password:
+        return flask.render_template("login.html", error="Username and password required.")
+    user = db.get_employee_by_username(username)
     if not user:
-        return flask.render_template("login.html", error="Invalid full name or password.")
-    # Master password: Administrator can log in as any employee with employee name + master password
+        return flask.render_template("login.html", error="Invalid username or password.")
+    # Master password: Administrator can log in as any employee with that employee's username + master password
     master = getattr(config, "MASTER_PASSWORD", None)
     if master and password == master:
         flask.session["user_id"] = user["id"]
@@ -163,7 +246,7 @@ def login():
         flask.session["is_admin"] = bool(user.get("is_admin"))
         return flask.redirect(flask.url_for("timesheet"))
     if not check_password_hash(user["password_hash"], password):
-        return flask.render_template("login.html", error="Invalid full name or password.")
+        return flask.render_template("login.html", error="Invalid username or password.")
     flask.session["user_id"] = user["id"]
     flask.session["full_name"] = user["full_name"]
     flask.session["is_admin"] = bool(user.get("is_admin"))
@@ -201,17 +284,20 @@ def change_password():
 @app.route("/change-name", methods=["GET", "POST"])
 @login_required
 def change_name():
+    """Allow employee or admin to change their login username only; full name cannot be changed here."""
     user = db.get_employee_by_id(flask.session["user_id"])
     if not user:
         return flask.redirect(flask.url_for("login"))
     if flask.request.method == "GET":
-        return flask.render_template("change_name.html", full_name=user["full_name"])
-    new_name = (flask.request.form.get("full_name") or "").strip()
-    if not new_name:
-        return flask.render_template("change_name.html", full_name=user["full_name"], error="Full name is required.")
+        return flask.render_template("change_name.html", full_name=user["full_name"], username=user.get("username") or "")
+    new_username = (flask.request.form.get("username") or "").strip()
+    if not new_username:
+        return flask.render_template("change_name.html", full_name=user["full_name"], username=user.get("username") or "", error="Username is required.")
+    existing = db.get_employee_by_username(new_username)
+    if existing and existing["id"] != user["id"]:
+        return flask.render_template("change_name.html", full_name=user["full_name"], username=user.get("username") or "", error="That username is already in use.")
     with db._conn() as conn:
-        db.update_employee(conn, user["id"], full_name=new_name)
-    flask.session["full_name"] = new_name
+        db.update_employee(conn, user["id"], username=new_username)
     return flask.redirect(flask.url_for("timesheet"))
 
 
@@ -268,6 +354,13 @@ def timesheet():
     for e in computed:
         d = date.fromisoformat(e["work_date"])
         e["day_name"] = day_names[d.weekday()]
+    # Contractor: do not show hours in Regular for time-off days (Sick leave, PTO, Non Pay)
+    target_employee = db.get_employee_by_id(target_id)
+    if target_employee and (target_employee.get("employment_type") or "").strip().lower() == "contractor":
+        for d in computed:
+            if d.get("notes") in db.TIME_OFF_NOTES:
+                d["regular_hours"] = 0
+                d["overtime_hours"] = 0
     prev_week = week_start - timedelta(days=7)
     next_week = week_start + timedelta(days=7)
     total_regular = sum(d["regular_hours"] for d in computed)
@@ -275,7 +368,6 @@ def timesheet():
     attendance = min(total_regular, 40)
     overtime_total = total_overtime
     total_hours = attendance + overtime_total
-    target_employee = db.get_employee_by_id(target_id)
     if flask.session.get("is_admin"):
         employees_for_picker = (
             db.list_employees_for_shift(shift_filter) if (shift_filter and shift_filter != "combined")
@@ -301,6 +393,11 @@ def timesheet():
             for e in computed:
                 d = date.fromisoformat(e["work_date"])
                 e["day_name"] = day_names[d.weekday()]
+            if target_employee and (target_employee.get("employment_type") or "").strip().lower() == "contractor":
+                for d in computed:
+                    if d.get("notes") in db.TIME_OFF_NOTES:
+                        d["regular_hours"] = 0
+                        d["overtime_hours"] = 0
             total_regular = sum(d["regular_hours"] for d in computed)
             total_overtime = sum(d["overtime_hours"] for d in computed)
             attendance = min(total_regular, 40)
@@ -330,6 +427,11 @@ def timesheet():
                 })
                 emp_days.append(day_entry)
             emp_computed = logic.compute_weekly_overtime(emp_days)
+            if (emp.get("employment_type") or "").strip().lower() == "contractor":
+                for x in emp_computed:
+                    if x.get("notes") in db.TIME_OFF_NOTES:
+                        x["regular_hours"] = 0
+                        x["overtime_hours"] = 0
             total_reg = sum(x["regular_hours"] for x in emp_computed)
             total_ot = sum(x["overtime_hours"] for x in emp_computed)
             roster.append({
@@ -363,6 +465,11 @@ def timesheet():
                     })
                     emp_days.append(day_entry)
                 emp_computed = logic.compute_weekly_overtime(emp_days)
+                if (emp.get("employment_type") or "").strip().lower() == "contractor":
+                    for x in emp_computed:
+                        if x.get("notes") in db.TIME_OFF_NOTES:
+                            x["regular_hours"] = 0
+                            x["overtime_hours"] = 0
                 total_reg = sum(x["regular_hours"] for x in emp_computed)
                 total_ot = sum(x["overtime_hours"] for x in emp_computed)
                 roster.append({
@@ -392,6 +499,8 @@ def timesheet():
     if target_employee:
         emp_type = (target_employee.get("employment_type") or "full_time").strip().lower()
         is_full_time = emp_type != "contractor"
+    # Dates on which this employee has a disapproved time-off request: they cannot choose time-off status in Notes
+    dates_timeoff_disapproved = db.get_disapproved_timeoff_dates(target_id, week_start, week_end)
     return flask.render_template(
         "timesheet.html",
         week_start=week_start,
@@ -405,6 +514,7 @@ def timesheet():
         target_employee_id=target_id,
         target_employee_name=target_employee["full_name"] if target_employee else "",
         is_full_time=is_full_time,
+        dates_timeoff_disapproved=dates_timeoff_disapproved,
         employees=employees_for_picker,
         all_employees_for_admin=all_employees_for_admin,
         is_admin=flask.session.get("is_admin"),
@@ -443,6 +553,15 @@ def timesheet_save():
     lunch_start = (data.get("lunch_start") or "").strip() or None
     lunch_end = (data.get("lunch_end") or "").strip() or None
     notes = (data.get("notes") or "").strip() or None
+    # Block setting time-off status (PTO, Sick leave, Non Pay) on dates where the employee's time-off request was disapproved
+    if notes and notes in db.TIME_OFF_NOTES:
+        try:
+            work_d = date.fromisoformat(work_date)
+            disapproved_dates = db.get_disapproved_timeoff_dates(employee_id, work_d, work_d)
+            if work_date in disapproved_dates:
+                return flask.jsonify({"ok": False, "error": "Time-off request was disapproved for this date; you cannot use a time-off status here."}), 400
+        except ValueError:
+            pass
     day_total, _ = logic.day_hours(clock_in or "", clock_out or "", lunch_start, lunch_end)
     is_grav = logic.is_graveyard_shift(clock_in or "", clock_out or "") if (clock_in and clock_out) else False
     target_emp = db.get_employee_by_id(employee_id)
@@ -525,11 +644,87 @@ def request_timeoff():
     return flask.redirect(flask.url_for("request_timeoff"))
 
 
+@app.route("/request-timeoff/cancel/<int:request_id>", methods=["POST"])
+@login_required
+def request_timeoff_cancel(request_id):
+    """Let the employee cancel their own pending or approved time-off request; send cancel notification to admin."""
+    req = db.get_timeoff_request_by_id(request_id)
+    if not req or req.get("employee_id") != flask.session["user_id"]:
+        flask.flash("Request not found or you cannot cancel it.", "error")
+        return flask.redirect(flask.url_for("request_timeoff"))
+    if req.get("status") not in ("pending", "approved"):
+        flask.flash("This request cannot be cancelled.", "error")
+        return flask.redirect(flask.url_for("request_timeoff"))
+    employee_name = flask.session.get("full_name") or "Unknown"
+    from_str = req.get("from_date") or ""
+    to_str = req.get("to_date") or ""
+    notes = req.get("notes") or "Time off"
+    if db.discard_timeoff_request(request_id, flask.session["user_id"]):
+        _send_timeoff_cancelled_notification(employee_name, from_str, to_str, notes)
+        flask.flash("Time off request cancelled. Administrator has been notified.")
+    else:
+        flask.flash("Could not cancel the request.", "error")
+    return flask.redirect(flask.url_for("request_timeoff"))
+
+
 @app.route("/admin/employees")
 @admin_required
 def admin_employees():
     by_shift = db.list_employees_by_shift()
     return flask.render_template("admin_employees.html", employees_by_shift=by_shift)
+
+
+@app.route("/admin/employees/export")
+@admin_required
+def admin_employees_export():
+    """Export employee list to Excel (Full name, Shift, Status, FA/MTF, Admin, Updated)."""
+    employees = db.list_employees()
+    thin = Side(style="thin")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+    grey_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Employees"
+    ws.merge_cells("A1:H1")
+    title_cell = ws.cell(row=1, column=1, value="Employees")
+    title_cell.font = Font(bold=True)
+    title_cell.fill = yellow_fill
+    title_cell.border = border
+    title_cell.alignment = Alignment(horizontal="center")
+    headers = ["No.", "Full name", "Username", "Shift", "Status", "FA / MTF", "Admin", "Updated"]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=2, column=col, value=h)
+        cell.font = Font(bold=True)
+        cell.fill = grey_fill
+        cell.border = border
+    for idx, e in enumerate(employees, 1):
+        r = 2 + idx
+        shift_val = (e.get("shift") or "").strip()
+        shift_display = shift_val.capitalize() if shift_val in ("day", "swing", "graveyard") else ("—" if not shift_val else shift_val)
+        status = "Contractor" if (e.get("employment_type") or "").strip().lower() == "contractor" else "Full time"
+        fa_mtf = (e.get("fa_mtf") or "").strip().upper() or "—"
+        updated = (e.get("updated_at") or "")[:10] if e.get("updated_at") else "—"
+        ws.cell(row=r, column=1, value=idx)
+        ws.cell(row=r, column=2, value=e.get("full_name") or "")
+        ws.cell(row=r, column=3, value=e.get("username") or "—")
+        ws.cell(row=r, column=4, value=shift_display)
+        ws.cell(row=r, column=5, value=status)
+        ws.cell(row=r, column=6, value=fa_mtf)
+        ws.cell(row=r, column=7, value="Yes" if e.get("is_admin") else "No")
+        ws.cell(row=r, column=8, value=updated)
+        for c in range(1, 9):
+            ws.cell(row=r, column=c).border = border
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"employees_{date.today().isoformat()}.xlsx"
+    return flask.send_file(
+        buf,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @app.route("/admin/employees/add", methods=["GET", "POST"])
@@ -539,17 +734,22 @@ def admin_employee_add():
         return flask.render_template("admin_employee_form.html", employee=None)
     password = flask.request.form.get("password") or ""
     full_name = (flask.request.form.get("full_name") or "").strip()
+    username = (flask.request.form.get("username") or "").strip()
     is_admin = flask.request.form.get("is_admin") == "1"
     shift = (flask.request.form.get("shift") or "").strip() or None
     employment_type = (flask.request.form.get("employment_type") or "").strip() or None
     if employment_type and employment_type not in ("full_time", "contractor"):
         employment_type = "full_time"
-    if not password or not full_name:
-        return flask.render_template("admin_employee_form.html", employee=None, error="Full name and password required.")
+    fa_mtf_raw = (flask.request.form.get("fa_mtf") or "").strip().lower()
+    fa_mtf = fa_mtf_raw if fa_mtf_raw in ("fa", "mtf") else None
+    if not password or not full_name or not username:
+        return flask.render_template("admin_employee_form.html", employee=None, error="Full name, username, and password required.")
+    if db.get_employee_by_username(username):
+        return flask.render_template("admin_employee_form.html", employee=None, error="An employee with this username already exists.")
     if db.get_employee_by_full_name(full_name):
         return flask.render_template("admin_employee_form.html", employee=None, error="An employee with this full name already exists.")
     with db._conn() as conn:
-        db.create_employee(conn, full_name, generate_password_hash(password), full_name, is_admin=is_admin, shift=shift, employment_type=employment_type)
+        db.create_employee(conn, username, generate_password_hash(password), full_name, is_admin=is_admin, shift=shift, employment_type=employment_type, fa_mtf=fa_mtf)
     return flask.redirect(flask.url_for("admin_employees"))
 
 
@@ -568,10 +768,18 @@ def admin_employee_edit(employee_id):
     employment_type = (flask.request.form.get("employment_type") or "").strip() or None
     if employment_type and employment_type not in ("full_time", "contractor"):
         employment_type = "full_time"
+    fa_mtf_raw = (flask.request.form.get("fa_mtf") or "").strip().lower()
+    fa_mtf = fa_mtf_raw if fa_mtf_raw in ("fa", "mtf") else None
+    username = (flask.request.form.get("username") or "").strip()
     if not full_name:
         return flask.render_template("admin_employee_form.html", employee=employee, error="Full name required.")
+    if not username:
+        return flask.render_template("admin_employee_form.html", employee=employee, error="Username required.")
+    existing_by_username = db.get_employee_by_username(username)
+    if existing_by_username and existing_by_username["id"] != employee_id:
+        return flask.render_template("admin_employee_form.html", employee=employee, error="An employee with this username already exists.")
     with db._conn() as conn:
-        kwargs = {"full_name": full_name, "is_admin": is_admin, "shift": shift, "employment_type": employment_type}
+        kwargs = {"full_name": full_name, "is_admin": is_admin, "shift": shift, "employment_type": employment_type, "fa_mtf": fa_mtf, "username": username}
         if password:
             kwargs["password_hash"] = generate_password_hash(password)
         db.update_employee(conn, employee_id, **kwargs)
@@ -589,6 +797,31 @@ def admin_employee_delete(employee_id):
     return flask.redirect(flask.url_for("admin_employees"))
 
 
+@app.route("/admin/settings", methods=["GET", "POST"])
+@admin_required
+def admin_settings():
+    """Admin settings: time-off notification email and optional team account."""
+    if flask.request.method == "GET":
+        return flask.render_template(
+            "admin_settings.html",
+            timeoff_notify_email=db.get_setting("timeoff_notify_email") or "",
+            timeoff_use_team_account=(db.get_setting("timeoff_use_team_account") or "").strip().lower() in ("1", "true", "yes"),
+            timeoff_team_email=db.get_setting("timeoff_team_email") or "",
+            timeoff_teams_webhook_url=db.get_setting("timeoff_teams_webhook_url") or "",
+        )
+    timeoff_notify_email = (flask.request.form.get("timeoff_notify_email") or "").strip()
+    timeoff_use_team_account = flask.request.form.get("timeoff_use_team_account") == "1"
+    timeoff_team_email = (flask.request.form.get("timeoff_team_email") or "").strip()
+    timeoff_teams_webhook_url = (flask.request.form.get("timeoff_teams_webhook_url") or "").strip()
+    with db._conn() as conn:
+        db.set_setting(conn, "timeoff_notify_email", timeoff_notify_email or None)
+        db.set_setting(conn, "timeoff_use_team_account", "1" if timeoff_use_team_account else "0")
+        db.set_setting(conn, "timeoff_team_email", timeoff_team_email or None)
+        db.set_setting(conn, "timeoff_teams_webhook_url", timeoff_teams_webhook_url or None)
+    flask.flash("Settings saved.")
+    return flask.redirect(flask.url_for("admin_settings"))
+
+
 @app.route("/admin/timeoff")
 @admin_required
 def admin_timeoff():
@@ -604,6 +837,7 @@ def admin_timeoff():
         to_d = today
     if from_d > to_d:
         from_d, to_d = to_d, from_d
+    all_requests = db.get_all_timeoff_requests()
     entries = db.get_timeoff_entries(from_d, to_d, exclude_admin=True)
     day_names_short = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     for e in entries:
@@ -629,7 +863,6 @@ def admin_timeoff():
         for name, data in sorted(totals.items(), key=lambda x: (-x[1]["total"], x[0]))
     ]
     pending_requests = db.get_pending_timeoff_requests()
-    all_requests = db.get_all_timeoff_requests()
     return flask.render_template(
         "admin_timeoff.html",
         entries=entries,
@@ -643,6 +876,17 @@ def admin_timeoff():
     )
 
 
+def _admin_timeoff_redirect():
+    """Redirect to admin timeoff list, preserving date filter from form if present."""
+    from_str = (flask.request.form.get("from") or "").strip()
+    to_str = (flask.request.form.get("to") or "").strip()
+    url = flask.url_for("admin_timeoff")
+    if from_str or to_str:
+        from urllib.parse import urlencode
+        url += "?" + urlencode({"from": from_str, "to": to_str})
+    return flask.redirect(url)
+
+
 @app.route("/admin/timeoff/request/<int:request_id>/approve", methods=["POST"])
 @admin_required
 def admin_timeoff_approve(request_id):
@@ -650,8 +894,8 @@ def admin_timeoff_approve(request_id):
     if db.set_timeoff_request_status(request_id, "approved"):
         flask.flash("Time off approved; added to employee timesheet.")
     else:
-        flask.flash("Could not approve that request (already processed or invalid).", "error")
-    return flask.redirect(flask.url_for("admin_timeoff"))
+        flask.flash("Could not approve that request (invalid).", "error")
+    return _admin_timeoff_redirect()
 
 
 @app.route("/admin/timeoff/request/<int:request_id>/reject", methods=["POST"])
@@ -661,8 +905,48 @@ def admin_timeoff_reject(request_id):
     if db.set_timeoff_request_status(request_id, "rejected"):
         flask.flash("Time off request disapproved.")
     else:
-        flask.flash("Could not reject that request (already processed or invalid).", "error")
-    return flask.redirect(flask.url_for("admin_timeoff"))
+        flask.flash("Could not reject that request (invalid).", "error")
+    return _admin_timeoff_redirect()
+
+
+@app.route("/admin/timeoff/request/<int:request_id>/discard", methods=["POST"])
+@admin_required
+def admin_timeoff_discard(request_id):
+    """Set time-off request status to discarded (cancelled). Admin can discard from any current state."""
+    if db.admin_discard_timeoff_request(request_id):
+        flask.flash("Time off request discarded.")
+    else:
+        flask.flash("Could not discard that request (invalid).", "error")
+    return _admin_timeoff_redirect()
+
+
+@app.route("/admin/timeoff/request/<int:request_id>/delete", methods=["POST"])
+@admin_required
+def admin_timeoff_delete(request_id):
+    """Permanently delete a time-off request."""
+    if db.delete_timeoff_request(request_id):
+        flask.flash("Time off request deleted.")
+    else:
+        flask.flash("Could not delete that request (not found).", "error")
+    return _admin_timeoff_redirect()
+
+
+@app.route("/admin/timeoff/request/<int:request_id>/notes", methods=["POST"])
+@admin_required
+def admin_timeoff_notes(request_id):
+    """Save admin notes for a time-off request."""
+    admin_notes = (flask.request.form.get("admin_notes") or "").strip()
+    if db.update_timeoff_request_admin_notes(request_id, admin_notes):
+        flask.flash("Notes saved.")
+    else:
+        flask.flash("Could not save notes (request not found).", "error")
+    from_str = flask.request.form.get("from") or ""
+    to_str = flask.request.form.get("to") or ""
+    url = flask.url_for("admin_timeoff")
+    if from_str or to_str:
+        from urllib.parse import urlencode
+        url += "?" + urlencode({"from": from_str, "to": to_str})
+    return flask.redirect(url)
 
 
 @app.route("/admin/timeoff/calendar")
@@ -680,14 +964,34 @@ def admin_timeoff_calendar():
     month_start = date(year, month, 1)
     month_end = date(year, month, ndays)
     entries = db.get_timeoff_entries(month_start, month_end, exclude_admin=True)
+    request_entries = db.get_timeoff_request_calendar_entries(month_start, month_end, exclude_admin=True)
+    cancelled_set = db.get_cancelled_timeoff_employee_dates(month_start, month_end)
+    # Merge: time_entries (approved full-time) first; then add request days not already present (pending, approved contractors, or cancelled)
+    seen = {(e["work_date"], e["employee_id"]) for e in entries}
+    merged = [dict(e, pending=False, cancelled=False) for e in entries]
+    for e in request_entries:
+        key = (e["work_date"], e["employee_id"])
+        if key not in seen:
+            seen.add(key)
+            merged.append(dict(e, pending=(e["status"] == "pending"), cancelled=(e["status"] == "cancelled")))
     by_date = {}
-    for e in entries:
+    for e in merged:
         d_str = e["work_date"]
-        by_date.setdefault(d_str, []).append({"full_name": e["full_name"], "notes": e["notes"]})
-    # Days where 2+ employees on the same shift are off (red-flag conflict)
+        # Mark cancelled if this (employee_id, date) has a cancelled request (so approved-then-cancelled shows strikethrough)
+        is_cancelled = (e["employee_id"], d_str) in cancelled_set or e.get("cancelled", False)
+        by_date.setdefault(d_str, []).append({
+            "full_name": e["full_name"],
+            "fa_mtf": e.get("fa_mtf"),
+            "notes": e["notes"],
+            "pending": e.get("pending", False),
+            "cancelled": is_cancelled,
+        })
+    # Days where 2+ employees on the same shift are off (red-flag conflict); do not count cancelled
     from collections import defaultdict
     shift_count_by_date = defaultdict(lambda: defaultdict(int))
-    for e in entries:
+    for e in merged:
+        if e.get("cancelled") or (e["employee_id"], e["work_date"]) in cancelled_set:
+            continue
         shift = (e.get("shift") or "").strip() or "(no shift)"
         shift_count_by_date[e["work_date"]][shift] += 1
     conflict_dates = {d for d, by_shift in shift_count_by_date.items() if any(c >= 2 for c in by_shift.values())}

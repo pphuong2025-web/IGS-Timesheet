@@ -3,7 +3,10 @@
 
 {% block content %}
 <h1>Employees</h1>
-<p><a href="{{ url_for('admin_employee_add') }}" class="btn">Add employee</a></p>
+<p style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+  <a href="{{ url_for('admin_employee_add') }}" class="btn">Add employee</a>
+  <a href="{{ url_for('admin_employees_export') }}" class="btn btn-secondary">Export to Excel</a>
+</p>
 
 <section style="margin-bottom: 2rem;">
   <h2 style="font-size: 1.2rem; margin-bottom: 0.5rem;">Day</h2>
@@ -11,13 +14,15 @@
   {% if employees %}
   <table>
     <thead>
-      <tr><th>Full name</th><th>Status</th><th>Admin</th><th>Updated</th><th></th></tr>
+      <tr><th>Full name</th><th>Username</th><th>Status</th><th>FA / MTF</th><th>Admin</th><th>Updated</th><th></th></tr>
     </thead>
     <tbody>
       {% for e in employees %}
       <tr>
         <td>{{ e.full_name }}</td>
+        <td>{{ e.username or '—' }}</td>
         <td>{{ 'Contractor' if (e.employment_type or '').lower() == 'contractor' else 'Full time' }}</td>
+        <td>{% if e.fa_mtf %}{{ e.fa_mtf|upper }}{% else %}—{% endif %}</td>
         <td>{{ 'Yes' if e.is_admin else 'No' }}</td>
         <td>{{ e.updated_at[:10] if e.updated_at else '–' }}</td>
         <td>
@@ -41,13 +46,15 @@
   {% if employees %}
   <table>
     <thead>
-      <tr><th>Full name</th><th>Status</th><th>Admin</th><th>Updated</th><th></th></tr>
+      <tr><th>Full name</th><th>Username</th><th>Status</th><th>FA / MTF</th><th>Admin</th><th>Updated</th><th></th></tr>
     </thead>
     <tbody>
       {% for e in employees %}
       <tr>
         <td>{{ e.full_name }}</td>
+        <td>{{ e.username or '—' }}</td>
         <td>{{ 'Contractor' if (e.employment_type or '').lower() == 'contractor' else 'Full time' }}</td>
+        <td>{% if e.fa_mtf %}{{ e.fa_mtf|upper }}{% else %}—{% endif %}</td>
         <td>{{ 'Yes' if e.is_admin else 'No' }}</td>
         <td>{{ e.updated_at[:10] if e.updated_at else '–' }}</td>
         <td>
@@ -71,13 +78,15 @@
   {% if employees %}
   <table>
     <thead>
-      <tr><th>Full name</th><th>Status</th><th>Admin</th><th>Updated</th><th></th></tr>
+      <tr><th>Full name</th><th>Username</th><th>Status</th><th>FA / MTF</th><th>Admin</th><th>Updated</th><th></th></tr>
     </thead>
     <tbody>
       {% for e in employees %}
       <tr>
         <td>{{ e.full_name }}</td>
+        <td>{{ e.username or '—' }}</td>
         <td>{{ 'Contractor' if (e.employment_type or '').lower() == 'contractor' else 'Full time' }}</td>
+        <td>{% if e.fa_mtf %}{{ e.fa_mtf|upper }}{% else %}—{% endif %}</td>
         <td>{{ 'Yes' if e.is_admin else 'No' }}</td>
         <td>{{ e.updated_at[:10] if e.updated_at else '–' }}</td>
         <td>
@@ -101,13 +110,15 @@
   {% if employees %}
   <table>
     <thead>
-      <tr><th>Full name</th><th>Status</th><th>Admin</th><th>Updated</th><th></th></tr>
+      <tr><th>Full name</th><th>Username</th><th>Status</th><th>FA / MTF</th><th>Admin</th><th>Updated</th><th></th></tr>
     </thead>
     <tbody>
       {% for e in employees %}
       <tr>
         <td>{{ e.full_name }}</td>
+        <td>{{ e.username or '—' }}</td>
         <td>{{ 'Contractor' if (e.employment_type or '').lower() == 'contractor' else 'Full time' }}</td>
+        <td>{% if e.fa_mtf %}{{ e.fa_mtf|upper }}{% else %}—{% endif %}</td>
         <td>{{ 'Yes' if e.is_admin else 'No' }}</td>
         <td>{{ e.updated_at[:10] if e.updated_at else '–' }}</td>
         <td>

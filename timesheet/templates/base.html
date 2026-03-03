@@ -64,9 +64,10 @@
     {% if session.get('is_admin') %}
     <a href="{{ url_for('admin_employees') }}">Employees</a>
     <a href="{{ url_for('admin_timeoff') }}">Time off</a>
+    <a href="{{ url_for('admin_settings') }}">Settings</a>
     {% endif %}
     <span class="user">{{ session.get('full_name') }}</span>
-    <a href="{{ url_for('change_name') }}">Change name</a>
+    <a href="{{ url_for('change_name') }}">Change username</a>
     <a href="{{ url_for('change_password') }}">Change password</a>
     <a href="{{ url_for('logout') }}">Logout</a>
   </nav>

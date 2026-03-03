@@ -8,6 +8,9 @@ from datetime import datetime, date, time, timedelta
 
 import config
 
+# Sentinel for "argument not provided" so we can distinguish None (clear FA/MTF) from omit (don't change).
+_NOT_GIVEN = object()
+
 
 def init_db():
     """Create tables if they don't exist."""
@@ -60,6 +63,8 @@ def init_db():
             conn.execute("ALTER TABLE employees ADD COLUMN shift TEXT")
         if "employment_type" not in emp_cols:
             conn.execute("ALTER TABLE employees ADD COLUMN employment_type TEXT")
+        if "fa_mtf" not in emp_cols:
+            conn.execute("ALTER TABLE employees ADD COLUMN fa_mtf TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS time_off_requests (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,6 +80,17 @@ def init_db():
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_time_off_requests_employee ON time_off_requests(employee_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_time_off_requests_status ON time_off_requests(status)")
+        # Migration: add admin_notes for admin to store notes on time-off requests
+        cur = conn.execute("PRAGMA table_info(time_off_requests)")
+        tor_cols = [row[1] for row in cur.fetchall()]
+        if "admin_notes" not in tor_cols:
+            conn.execute("ALTER TABLE time_off_requests ADD COLUMN admin_notes TEXT")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
         conn.commit()
 
 
@@ -90,7 +106,7 @@ def _conn():
 
 # --- Employees ---
 
-def create_employee(conn, username, password_hash, full_name, is_admin=False, shift=None, employment_type=None):
+def create_employee(conn, username, password_hash, full_name, is_admin=False, shift=None, employment_type=None, fa_mtf=None):
     now = datetime.utcnow().isoformat() + "Z"
     shift_val = (shift or "").strip().lower() or None
     if shift_val and shift_val not in ("day", "swing", "graveyard"):
@@ -98,9 +114,12 @@ def create_employee(conn, username, password_hash, full_name, is_admin=False, sh
     emp_type = (employment_type or "full_time").strip().lower() if employment_type else "full_time"
     if emp_type not in ("full_time", "contractor"):
         emp_type = "full_time"
+    fa_mtf_val = (fa_mtf or "").strip().lower() or None
+    if fa_mtf_val and fa_mtf_val not in ("fa", "mtf"):
+        fa_mtf_val = None
     conn.execute(
-        "INSERT INTO employees (username, password_hash, full_name, is_admin, shift, employment_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (username, password_hash, full_name, 1 if is_admin else 0, shift_val, emp_type, now, now),
+        "INSERT INTO employees (username, password_hash, full_name, is_admin, shift, employment_type, fa_mtf, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (username, password_hash, full_name, 1 if is_admin else 0, shift_val, emp_type, fa_mtf_val, now, now),
     )
     conn.commit()
     return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -128,7 +147,7 @@ def get_employee_by_full_name(full_name):
 def list_employees():
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT id, full_name, is_admin, shift, employment_type, created_at, updated_at FROM employees ORDER BY full_name"
+            "SELECT id, username, full_name, is_admin, shift, employment_type, fa_mtf, created_at, updated_at FROM employees ORDER BY full_name"
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -154,12 +173,22 @@ def list_employees_for_shift(shift):
     return by_shift.get((shift or "").strip().lower(), [])
 
 
-def update_employee(conn, employee_id, full_name=None, password_hash=None, is_admin=None, shift=None, employment_type=None):
+def update_employee(conn, employee_id, full_name=None, username=_NOT_GIVEN, password_hash=None, is_admin=None, shift=None, employment_type=None, fa_mtf=_NOT_GIVEN):
     updates = ["updated_at = ?"]
     args = [datetime.utcnow().isoformat() + "Z"]
     if full_name is not None:
         updates.append("full_name = ?")
         args.append(full_name)
+    if username is not _NOT_GIVEN:
+        uname_val = (username or "").strip()
+        updates.append("username = ?")
+        args.append(uname_val)
+    if fa_mtf is not _NOT_GIVEN:
+        fa_mtf_val = (fa_mtf or "").strip().lower() or None
+        if fa_mtf_val and fa_mtf_val not in ("fa", "mtf"):
+            fa_mtf_val = None
+        updates.append("fa_mtf = ?")
+        args.append(fa_mtf_val)
     if password_hash is not None:
         updates.append("password_hash = ?")
         args.append(password_hash)
@@ -189,6 +218,25 @@ def update_employee(conn, employee_id, full_name=None, password_hash=None, is_ad
 def delete_employee(conn, employee_id):
     conn.execute("DELETE FROM employees WHERE id = ?", (employee_id,))
     conn.execute("DELETE FROM time_entries WHERE employee_id = ?", (employee_id,))
+    conn.commit()
+
+
+def get_setting(key):
+    """Return the value for a setting key, or None if not set."""
+    with _conn() as conn:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+
+def set_setting(conn, key, value):
+    """Set a setting. value can be str or None (deletes the key)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+    else:
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value.strip() if isinstance(value, str) else value),
+        )
     conn.commit()
 
 
@@ -306,7 +354,7 @@ def get_timeoff_entries(start_date, end_date, exclude_admin=True):
     with _conn() as conn:
         if exclude_admin:
             rows = conn.execute("""
-                SELECT t.employee_id, e.full_name, t.work_date, t.notes, e.shift, t.regular_hours
+                SELECT t.employee_id, e.full_name, t.work_date, t.notes, e.shift, t.regular_hours, e.fa_mtf
                 FROM time_entries t
                 JOIN employees e ON e.id = t.employee_id
                 WHERE t.work_date >= ? AND t.work_date <= ?
@@ -316,7 +364,7 @@ def get_timeoff_entries(start_date, end_date, exclude_admin=True):
             """, [start_str, end_str] + list(TIME_OFF_NOTES)).fetchall()
         else:
             rows = conn.execute("""
-                SELECT t.employee_id, e.full_name, t.work_date, t.notes, e.shift, t.regular_hours
+                SELECT t.employee_id, e.full_name, t.work_date, t.notes, e.shift, t.regular_hours, e.fa_mtf
                 FROM time_entries t
                 JOIN employees e ON e.id = t.employee_id
                 WHERE t.work_date >= ? AND t.work_date <= ?
@@ -324,6 +372,52 @@ def get_timeoff_entries(start_date, end_date, exclude_admin=True):
                 ORDER BY e.full_name, t.work_date
             """, [start_str, end_str] + list(TIME_OFF_NOTES)).fetchall()
         return [dict(r) for r in rows]
+
+
+def get_timeoff_request_calendar_entries(start_date, end_date, exclude_admin=True):
+    """Return one entry per day for pending, approved, and cancelled time-off requests in the date range. Used so the admin calendar shows employee names for all requests including cancelled. Returns list of dicts with employee_id, full_name, shift, work_date, notes, status."""
+    if isinstance(start_date, str):
+        start_date = date.fromisoformat(start_date)
+    if isinstance(end_date, str):
+        end_date = date.fromisoformat(end_date)
+    start_str = start_date.isoformat()
+    end_str = end_date.isoformat()
+    with _conn() as conn:
+        if exclude_admin:
+            rows = conn.execute("""
+                SELECT r.employee_id, e.full_name, e.shift, r.from_date, r.to_date, r.notes, r.status, e.fa_mtf
+                FROM time_off_requests r
+                JOIN employees e ON e.id = r.employee_id
+                WHERE r.status IN ('pending', 'approved', 'cancelled')
+                AND r.from_date <= ? AND r.to_date >= ?
+                AND (e.is_admin IS NULL OR e.is_admin = 0)
+            """, (end_str, start_str)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT r.employee_id, e.full_name, e.shift, r.from_date, r.to_date, r.notes, r.status, e.fa_mtf
+                FROM time_off_requests r
+                JOIN employees e ON e.id = r.employee_id
+                WHERE r.status IN ('pending', 'approved', 'cancelled')
+                AND r.from_date <= ? AND r.to_date >= ?
+            """, (end_str, start_str)).fetchall()
+    result = []
+    for r in rows:
+        from_d = date.fromisoformat(r[3])
+        to_d = date.fromisoformat(r[4])
+        d = from_d
+        while d <= to_d:
+            if start_date <= d <= end_date:
+                result.append({
+                    "employee_id": r[0],
+                    "full_name": r[1],
+                    "shift": r[2],
+                    "work_date": d.isoformat(),
+                    "notes": r[5],
+                    "status": r[6],
+                    "fa_mtf": r[7] if len(r) > 7 else None,
+                })
+            d += timedelta(days=1)
+    return result
 
 
 def submit_timeoff(employee_id, from_date, to_date, notes, hours_per_day=8):
@@ -345,6 +439,25 @@ def submit_timeoff(employee_id, from_date, to_date, notes, hours_per_day=8):
                 notes=notes, regular_hours=hours_per_day, overtime_hours=0, is_graveyard=0,
             )
             d += timedelta(days=1)
+
+
+def remove_timeoff_entries(employee_id, from_date, to_date):
+    """Remove time-off entries (Sick leave, PTO, Non Pay) for the employee in the date range. Called when a time-off request is cancelled so hours disappear from admin and employee timesheets."""
+    if isinstance(from_date, str):
+        from_date = date.fromisoformat(from_date)
+    if isinstance(to_date, str):
+        to_date = date.fromisoformat(to_date)
+    if from_date > to_date:
+        return
+    start_str = from_date.isoformat()
+    end_str = to_date.isoformat()
+    placeholders = ",".join("?" * len(TIME_OFF_NOTES))
+    with _conn() as conn:
+        conn.execute(
+            "DELETE FROM time_entries WHERE employee_id = ? AND work_date >= ? AND work_date <= ? AND notes IN (" + placeholders + ")",
+            (employee_id, start_str, end_str) + tuple(TIME_OFF_NOTES),
+        )
+        conn.commit()
 
 
 def create_timeoff_request(employee_id, from_date, to_date, notes, hours_per_day=8):
@@ -386,7 +499,7 @@ def get_all_timeoff_requests():
     with _conn() as conn:
         rows = conn.execute("""
             SELECT r.id, r.employee_id, r.from_date, r.to_date, r.notes, r.hours_per_day, r.status, r.created_at,
-                   e.full_name
+                   r.admin_notes, e.full_name
             FROM time_off_requests r
             JOIN employees e ON e.id = r.employee_id
             ORDER BY r.created_at DESC
@@ -399,7 +512,7 @@ def get_timeoff_request_by_id(request_id):
     with _conn() as conn:
         row = conn.execute("""
             SELECT r.id, r.employee_id, r.from_date, r.to_date, r.notes, r.hours_per_day, r.status,
-                   e.full_name
+                   r.admin_notes, e.full_name
             FROM time_off_requests r
             JOIN employees e ON e.id = r.employee_id
             WHERE r.id = ?
@@ -407,13 +520,30 @@ def get_timeoff_request_by_id(request_id):
         return dict(row) if row else None
 
 
+def update_timeoff_request_admin_notes(request_id, admin_notes):
+    """Update admin_notes for a time-off request. Returns True on success."""
+    req = get_timeoff_request_by_id(request_id)
+    if not req:
+        return False
+    notes_val = (admin_notes or "").strip() or None
+    now = datetime.utcnow().isoformat()
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE time_off_requests SET admin_notes = ?, updated_at = ? WHERE id = ?",
+            (notes_val, now, request_id),
+        )
+        conn.commit()
+    return True
+
+
 def set_timeoff_request_status(request_id, status):
-    """Set request status to 'approved' or 'rejected'. If approved, apply time off to timesheet. Returns True on success."""
+    """Set request status to 'approved' or 'rejected'. Admin can change status from any current state. If approved, apply time off to timesheet (only when not already approved). Returns True on success."""
     if status not in ("approved", "rejected"):
         return False
     req = get_timeoff_request_by_id(request_id)
-    if not req or req.get("status") != "pending":
+    if not req:
         return False
+    current = req.get("status")
     now = datetime.utcnow().isoformat()
     with _conn() as conn:
         conn.execute(
@@ -421,11 +551,58 @@ def set_timeoff_request_status(request_id, status):
             (status, now, request_id),
         )
         conn.commit()
-    if status == "approved":
-        from_d = date.fromisoformat(req["from_date"])
-        to_d = date.fromisoformat(req["to_date"])
-        submit_timeoff(req["employee_id"], from_d, to_d, req["notes"], hours_per_day=req.get("hours_per_day") or 8)
+    # Apply time off to timesheet only when changing TO approved and not already approved
+    if status == "approved" and current != "approved":
+        employee = get_employee_by_id(req["employee_id"])
+        is_contractor = employee and (employee.get("employment_type") or "").strip().lower() == "contractor"
+        if not is_contractor:
+            from_d = date.fromisoformat(req["from_date"])
+            to_d = date.fromisoformat(req["to_date"])
+            hours = req.get("hours_per_day")
+            if hours is None:
+                hours = 8
+            submit_timeoff(req["employee_id"], from_d, to_d, req["notes"], hours_per_day=hours)
     return True
+
+
+def discard_timeoff_request(request_id, employee_id):
+    """Let an employee cancel their own pending or approved time-off request. Sets status to 'cancelled'. Does not remove time-off hours from the timesheet."""
+    req = get_timeoff_request_by_id(request_id)
+    if not req or req.get("employee_id") != employee_id:
+        return False
+    if req.get("status") not in ("pending", "approved"):
+        return False
+    now = datetime.utcnow().isoformat()
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE time_off_requests SET status = 'cancelled', updated_at = ? WHERE id = ?",
+            (now, request_id),
+        )
+        conn.commit()
+    return True
+
+
+def admin_discard_timeoff_request(request_id):
+    """Set request status to 'cancelled' (discarded). Admin can discard from any current state. Does not remove time-off hours from the timesheet."""
+    req = get_timeoff_request_by_id(request_id)
+    if not req:
+        return False
+    now = datetime.utcnow().isoformat()
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE time_off_requests SET status = 'cancelled', updated_at = ? WHERE id = ?",
+            (now, request_id),
+        )
+        conn.commit()
+    return True
+
+
+def delete_timeoff_request(request_id):
+    """Permanently delete a time-off request. Returns True if a row was deleted."""
+    with _conn() as conn:
+        cur = conn.execute("DELETE FROM time_off_requests WHERE id = ?", (request_id,))
+        conn.commit()
+    return cur.rowcount > 0
 
 
 def get_employee_timeoff_requests(employee_id):
@@ -438,4 +615,52 @@ def get_employee_timeoff_requests(employee_id):
             ORDER BY created_at DESC
         """, (employee_id,)).fetchall()
         return [dict(r) for r in rows]
+
+
+def get_cancelled_timeoff_employee_dates(start_date, end_date):
+    """Return set of (employee_id, work_date_str) for dates in [start_date, end_date] that fall within a cancelled time-off request. Used by calendar to show cancelled (strikethrough) even when the entry came from time_entries."""
+    if isinstance(start_date, str):
+        start_date = date.fromisoformat(start_date)
+    if isinstance(end_date, str):
+        end_date = date.fromisoformat(end_date)
+    start_str = start_date.isoformat()
+    end_str = end_date.isoformat()
+    with _conn() as conn:
+        rows = conn.execute("""
+            SELECT employee_id, from_date, to_date FROM time_off_requests
+            WHERE status = 'cancelled'
+            AND from_date <= ? AND to_date >= ?
+        """, (end_str, start_str)).fetchall()
+    result = set()
+    for r in rows:
+        from_d = date.fromisoformat(r[1])
+        to_d = date.fromisoformat(r[2])
+        d = from_d
+        while d <= to_d:
+            if start_date <= d <= end_date:
+                result.add((r[0], d.isoformat()))
+            d += timedelta(days=1)
+    return result
+
+
+def get_disapproved_timeoff_dates(employee_id, start_date, end_date):
+    """Return set of date strings (YYYY-MM-DD) in [start_date, end_date] that fall within any rejected time-off request for this employee."""
+    start_str = start_date.isoformat()
+    end_str = end_date.isoformat()
+    with _conn() as conn:
+        rows = conn.execute("""
+            SELECT from_date, to_date FROM time_off_requests
+            WHERE employee_id = ? AND status = 'rejected'
+            AND from_date <= ? AND to_date >= ?
+        """, (employee_id, end_str, start_str)).fetchall()
+    result = set()
+    for r in rows:
+        from_d = date.fromisoformat(r[0])
+        to_d = date.fromisoformat(r[1])
+        d = from_d
+        while d <= to_d:
+            if start_date <= d <= end_date:
+                result.add(d.isoformat())
+            d += timedelta(days=1)
+    return result
 

@@ -39,7 +39,7 @@
           {% endif %}
           <div class="cal-day-num">{{ cell[0].day }}</div>
           {% for item in cell[1] %}
-          <div class="cal-timeoff" title="{{ item.notes }}">{{ item.full_name }} <span class="cal-type">({{ item.notes }})</span></div>
+          <div class="cal-timeoff" title="{{ item.notes }}{% if item.pending %} (Pending approval){% endif %}{% if item.cancelled %} (Cancelled){% endif %}">{% if item.cancelled %}<span class="cal-cancelled-name">{{ item.full_name }}{% if item.fa_mtf %} {{ item.fa_mtf|upper }}{% endif %}</span> <span class="cal-cancelled">(Cancelled)</span>{% else %}{{ item.full_name }}{% if item.fa_mtf %} {{ item.fa_mtf|upper }}{% endif %}{% if item.pending %} <span class="cal-pending">(pending)</span>{% endif %}{% endif %} <span class="cal-type">({{ item.notes }})</span></div>
           {% endfor %}
           {% endif %}
         </td>
@@ -90,6 +90,9 @@
   }
   .cal-day-num { font-weight: 700; margin-bottom: 0.35rem; color: var(--text-muted); font-size: 0.9rem; }
   .cal-timeoff { font-size: 0.8rem; margin: 0.2rem 0; line-height: 1.3; }
+  .cal-pending { font-style: italic; color: var(--text-muted); }
+  .cal-cancelled-name { text-decoration: line-through; }
+  .cal-cancelled { font-style: italic; color: var(--text-muted); }
   .cal-type { color: var(--text-muted); }
   .cal-cell-conflict { background: rgba(248, 81, 73, 0.12); border-color: var(--danger) !important; }
   .cal-flag { color: var(--danger); font-weight: 600; font-size: 0.8rem; margin-bottom: 0.25rem; }
