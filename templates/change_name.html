@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Change username – Timesheet{% endblock %}
+
+{% block content %}
+<h1>Change username</h1>
+<p style="color: var(--text-muted); margin-bottom: 1rem;">You can change your login username. Your name cannot be changed here.</p>
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+<form method="post" action="{{ url_for('change_name') }}" style="max-width: 360px;">
+  <div class="form-group">
+    <label>Name</label>
+    <input type="text" value="{{ full_name or '' }}" disabled style="width: 100%; background: var(--surface); color: var(--text-muted);" title="Your name cannot be changed here. Contact an administrator if needed.">
+  </div>
+  <div class="form-group">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" value="{{ username or '' }}" required autofocus style="width: 100%;" placeholder="Login username">
+  </div>
+  <button type="submit" class="btn">Update username</button>
+  <a href="{{ url_for('timesheet') }}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

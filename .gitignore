@@ -1,7 +1,8 @@
 # Do not commit - contains SMTP password
 timesheet/email_config.env
-# Database (local data)
-*.db
+email_config.env
+.env
 # Python
 __pycache__/
 *.pyc
+*.pyo
