@@ -21,15 +21,13 @@ GRAVEYARD_END_HOUR = 6      # 6 AM (next day)
 
 # Time-off notification: email sent when an employee requests time off
 TIMEOFF_NOTIFY_EMAIL = os.environ.get("TIMESHEET_TIMEOFF_NOTIFY_EMAIL", "phuong.pham@fii-na.com")
-# SMTP (optional): set to send time-off emails. If not set, notification is skipped.
-# You can set env vars TIMESHEET_SMTP_* or use a file: create email_config.env in this folder
-# with lines like: TIMESHEET_SMTP_HOST=smtp.office365.com
-SMTP_HOST = os.environ.get("TIMESHEET_SMTP_HOST", "")
+# SMTP default account (committed); override with env TIMESHEET_SMTP_* or email_config.env.
+SMTP_HOST = os.environ.get("TIMESHEET_SMTP_HOST", "smtp.office365.com")
 SMTP_PORT = int(os.environ.get("TIMESHEET_SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("TIMESHEET_SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("TIMESHEET_SMTP_PASSWORD", "")
+SMTP_USER = os.environ.get("TIMESHEET_SMTP_USER", "FA.epd2@fii-na.com")
+SMTP_PASSWORD = os.environ.get("TIMESHEET_SMTP_PASSWORD", "FA-op-8299")
 SMTP_USE_TLS = os.environ.get("TIMESHEET_SMTP_USE_TLS", "1").strip().lower() in ("1", "true", "yes")
-SMTP_FROM = os.environ.get("TIMESHEET_SMTP_FROM", "") or os.environ.get("TIMESHEET_SMTP_USER", "") or "timesheet@localhost"
+SMTP_FROM = os.environ.get("TIMESHEET_SMTP_FROM", "") or os.environ.get("TIMESHEET_SMTP_USER", "") or "FA.epd2@fii-na.com"
 
 # Optional: load SMTP from email_config.env (same folder as config.py). One key=value per line. Do not commit this file.
 _email_config_path = os.path.join(BASE_DIR, "email_config.env")
